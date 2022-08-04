@@ -25,3 +25,4 @@ If you are extending a function or type as a user or developer, then it would be
 
 # TODO
 - What's the best pattern for exports? Should this package export anything and have dependent packages @reexport? Does that make it so users would still see `Yields.Rate`?
+- Should this package precompile anything, or let the downstream packages do that? Or do it here unless the downstream extend the types and/or methods?
