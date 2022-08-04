@@ -1,6 +1,9 @@
 using ActuaryCore
 using Test
+using Dates
 
-@testset "ActuaryCore.jl" begin
-    # Write your tests here.
-end
+import DayCounts
+
+
+include("Rates.jl")
+include("irr.jl")
