@@ -1,4 +1,4 @@
-name = "ActuaryCore"
+name = "FinanceCore"
 uuid = "b9b1ffdd-6612-4b69-8227-7663be06e089"
 authors = ["alecloudenback <alecloudenback@users.noreply.github.com> and contributors"]
 version = "0.1.0"
@@ -8,6 +8,7 @@ Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
 
 [compat]
 julia = "1.6"
+Roots = "^1.0, 2"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

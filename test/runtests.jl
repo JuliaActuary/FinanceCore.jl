@@ -1,4 +1,4 @@
-using ActuaryCore
+using FinanceCore
 using Test
 using Dates
 

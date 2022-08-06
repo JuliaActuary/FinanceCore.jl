@@ -1,14 +1,14 @@
 ```@meta
-CurrentModule = ActuaryCore
+CurrentModule = FinanceCore
 ```
 
-# ActuaryCore
+# FinanceCore
 
-Documentation for [ActuaryCore](https://github.com/alecloudenback/ActuaryCore.jl).
+Documentation for [FinanceCore](https://github.com/alecloudenback/FinanceCore.jl).
 
 ```@index
 ```
 
 ```@autodocs
-Modules = [ActuaryCore]
+Modules = [FinanceCore]
 ```

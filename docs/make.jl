@@ -1,16 +1,16 @@
-using ActuaryCore
+using FinanceCore
 using Documenter
 
-DocMeta.setdocmeta!(ActuaryCore, :DocTestSetup, :(using ActuaryCore); recursive=true)
+DocMeta.setdocmeta!(FinanceCore, :DocTestSetup, :(using FinanceCore); recursive=true)
 
 makedocs(;
-    modules=[ActuaryCore],
+    modules=[FinanceCore],
     authors="alecloudenback <alecloudenback@users.noreply.github.com> and contributors",
-    repo="https://github.com/alecloudenback/ActuaryCore.jl/blob/{commit}{path}#{line}",
-    sitename="ActuaryCore.jl",
+    repo="https://github.com/alecloudenback/FinanceCore.jl/blob/{commit}{path}#{line}",
+    sitename="FinanceCore.jl",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
-        canonical="https://alecloudenback.github.io/ActuaryCore.jl",
+        canonical="https://alecloudenback.github.io/FinanceCore.jl",
         assets=String[],
     ),
     pages=[
@@ -19,6 +19,6 @@ makedocs(;
 )
 
 deploydocs(;
-    repo="github.com/alecloudenback/ActuaryCore.jl",
+    repo="github.com/alecloudenback/FinanceCore.jl",
     devbranch="main",
 )

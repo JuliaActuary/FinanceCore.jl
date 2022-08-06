@@ -1,4 +1,4 @@
-module ActuaryCore
+module FinanceCore
 import Roots
 
 include("AbtractYield.jl")

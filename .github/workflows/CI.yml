@@ -54,6 +54,6 @@ jobs:
       - run: |
           julia --project=docs -e '
             using Documenter: DocMeta, doctest
-            using ActuaryCore
-            DocMeta.setdocmeta!(ActuaryCore, :DocTestSetup, :(using ActuaryCore); recursive=true)
-            doctest(ActuaryCore)'
+            using FinanceCore
+            DocMeta.setdocmeta!(FinanceCore, :DocTestSetup, :(using FinanceCore); recursive=true)
+            doctest(FinanceCore)'

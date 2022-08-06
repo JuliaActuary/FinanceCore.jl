@@ -1,16 +1,16 @@
-# ActuaryCore
+# FinanceCore
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://alecloudenback.github.io/ActuaryCore.jl/stable)
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://alecloudenback.github.io/ActuaryCore.jl/dev)
-[![Build Status](https://github.com/alecloudenback/ActuaryCore.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/alecloudenback/ActuaryCore.jl/actions/workflows/CI.yml?query=branch%3Amain)
-[![Coverage](https://codecov.io/gh/alecloudenback/ActuaryCore.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/alecloudenback/ActuaryCore.jl)
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://alecloudenback.github.io/FinanceCore.jl/stable)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://alecloudenback.github.io/FinanceCore.jl/dev)
+[![Build Status](https://github.com/alecloudenback/FinanceCore.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/alecloudenback/FinanceCore.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Coverage](https://codecov.io/gh/alecloudenback/FinanceCore.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/alecloudenback/FinanceCore.jl)
 
 
-This repository contains foundational types and routines that are used in other packages. Users should generally prefer to use other JuliaActuary packages which will re-export the ActuaryCore data/methods as necessary.
+This repository contains foundational types and routines that are used in other packages. Users should generally prefer to use other JuliaActuary packages which will re-export the FinanceCore data/methods as necessary.
 
 If you are extending a function or type as a user or developer, then it would be a good idea to import/use this package directly.
 
-## ActuaryCore contents
+## FinanceCore contents
 
 ### Reexported by ActuaryUtilities.jl
 - IRR (reexported by ActuaryUtilities)
