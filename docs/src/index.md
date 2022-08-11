@@ -4,7 +4,7 @@ CurrentModule = FinanceCore
 
 # FinanceCore
 
-Documentation for [FinanceCore](https://github.com/alecloudenback/FinanceCore.jl).
+Documentation for [FinanceCore](https://github.com/JuliaActuary/FinanceCore.jl).
 
 ```@index
 ```

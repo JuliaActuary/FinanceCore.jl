@@ -6,11 +6,11 @@ DocMeta.setdocmeta!(FinanceCore, :DocTestSetup, :(using FinanceCore); recursive=
 makedocs(;
     modules=[FinanceCore],
     authors="alecloudenback <alecloudenback@users.noreply.github.com> and contributors",
-    repo="https://github.com/alecloudenback/FinanceCore.jl/blob/{commit}{path}#{line}",
+    repo="https://github.com/JuliaActuary/FinanceCore.jl/blob/{commit}{path}#{line}",
     sitename="FinanceCore.jl",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
-        canonical="https://alecloudenback.github.io/FinanceCore.jl",
+        canonical="https://JuliaActuary.github.io/FinanceCore.jl",
         assets=String[],
     ),
     pages=[
@@ -19,6 +19,6 @@ makedocs(;
 )
 
 deploydocs(;
-    repo="github.com/alecloudenback/FinanceCore.jl",
+    repo="github.com/JuliaActuary/FinanceCore.jl",
     devbranch="main",
 )
