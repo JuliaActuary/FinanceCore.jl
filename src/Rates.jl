@@ -320,7 +320,7 @@ function Base.:+(a::Real, b::Rate{N,T}) where {N<:Real, T<:Periodic}
     return Periodic(b.value + a,b.compounding.frequency)
 end
 
-function Base.:+(a::Rate{N,T},b::Rate{N,T}) where {N<:Real,T<:CompoundingFrequency}
+function Base.:+(a::Rate{N,T},b::Rate{N,U}) where {N<:Real,T,U}
     a_rate = rate(a)
     b_rate = rate(convert(a.compounding,b))
     r = Rate(a_rate + b_rate,a.compounding)
@@ -359,7 +359,7 @@ end
 function Base.:-(a::Real, b::Rate{N,T}) where {N<:Real, T<:Periodic}
     return Periodic(a - b.value, b.compounding.frequency)
 end
-function Base.:-(a::Rate{N,T},b::Rate{N,T}) where {N<:Real,T<:CompoundingFrequency}
+function Base.:-(a::Rate{N,U},b::Rate{N,U}) where {N<:Real,T,U}
     a_rate = rate(a)
     b_rate = rate(convert(a.compounding,b))
     r = Rate(a_rate - b_rate,a.compounding)
@@ -424,7 +424,7 @@ julia> Yields.Periodic(0.03,100) < Yields.Continuous(0.03)
 true
 ```
 """
-function Base.:<(a::Rate{N,T},b::Rate{N,U}) where {N<:Real,T<:CompoundingFrequency,U<:CompoundingFrequency}
+function Base.:<(a::Rate{N,T},b::Rate{N,U}) where {N<:Real,T,U}
     bc = convert(a.compounding,b)
     return rate(a) < rate(bc)
 end
@@ -441,7 +441,7 @@ julia> Yields.Periodic(0.03,100) > Yields.Continuous(0.03)
 false
 ```
 """
-function Base.:>(a::Rate{N,T},b::Rate{N,U}) where {N<:Real,T<:CompoundingFrequency,U<:CompoundingFrequency}
+function Base.:>(a::Rate{N,T},b::Rate{N,U}) where {N<:Real,T,U}
     bc = convert(a.compounding,b)
     return rate(a) > rate(bc)
 end
