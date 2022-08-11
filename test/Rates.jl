@@ -118,6 +118,9 @@
             
             @test p(a) + b ≈ Periodic(0.05,1)
             @test a + p(b) ≈ Periodic(0.05,1)
+            
+            @test p(a) + c(b) ≈ p(a) + Periodic(1)(c(b)) 
+            @test c(a) + p(b) ≈ c(a) + Continuous()(p(b))
         end
 
         @testset "multiplication" begin
