@@ -13,7 +13,7 @@ If you are extending a function or type as a user or developer, then it would be
 ## FinanceCore contents
 
 ### Reexported by ActuaryUtilities.jl
-- IRR (reexported by ActuaryUtilities)
+- `irr` and `internal_rate_of_return` (reexported by ActuaryUtilities)
 
 ### Reexported by Yields.jl
 - `AbstractYield`
