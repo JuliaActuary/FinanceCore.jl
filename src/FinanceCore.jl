@@ -1,7 +1,7 @@
 module FinanceCore
 import Roots
 
-include("AbtractYield.jl")
+include("AbstractYield.jl")
 
 include("Rates.jl")
 export AbstractYield, Rate, rate, discount, accumulation, Periodic, Continuous, forward
