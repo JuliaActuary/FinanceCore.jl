@@ -64,13 +64,33 @@ end
 irr_newton(cashflows) = irr_newton(cashflows,0:length(cashflows)-1)
 
 function irr_newton(cashflows, times)
+    @assert length(cashflows) >= length(times)
     # use newton's method with hand-coded derivative
-    f(r) =  sum(cf * exp(-r*t) for (cf,t) in zip(cashflows,times))
-    f′(r) = sum(-t*cf * exp(-r*t) for (cf,t) in zip(cashflows,times) if t > 0)
-    # r = Roots.solve(Roots.ZeroProblem((f,f′), 0.0), Roots.Newton())
+    f(r) =  __pv(r,cashflows,times)
+    f′(r) =  __pv′(r,cashflows,times)
     r = Roots.newton(x->(f(x),f(x)/f′(x)),0.0)
     return Periodic(exp(r)-1,1)
 
+end
+
+function __pv(r,cashflows, times)
+    # determine the type of the container and use that for the sum after tranforming by multiplying
+    v = zero(typeof(first(cashflows) * 0.1)) 
+    @turbo for i ∈ eachindex(cashflows)
+        cf = cashflows[i]
+        t = times[i]
+        v += cf * exp(-r*t)
+    end
+    return v
+end
+function __pv′(r,cashflows, times)
+    v = zero(typeof(first(cashflows) * 0.1))
+    @turbo for i ∈ eachindex(cashflows)
+        cf = cashflows[i]
+        t =times[i]
+        v += -t*cf * exp(-r*t)
+    end
+    return v
 end
 
 """
@@ -80,3 +100,14 @@ end
     An alias for `internal_rate_of_return`.
 """
 irr = internal_rate_of_return
+
+
+function newtons_method(∇f, H, x, ε, k_max) 
+    k, Δ = 1, fill(Inf, length(x))
+    while norm(Δ) > ε && k ≤ k_max
+            Δ = H(x) \ ∇f(x)
+            x -= Δ
+            k += 1
+    end
+    return x 
+end
