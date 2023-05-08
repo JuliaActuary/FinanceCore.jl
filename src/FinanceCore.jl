@@ -1,5 +1,6 @@
 module FinanceCore
 import Roots
+using LoopVectorization
 
 include("AbstractYield.jl")
 

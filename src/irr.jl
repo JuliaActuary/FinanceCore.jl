@@ -26,22 +26,15 @@ end
 function internal_rate_of_return(cashflows,times)
     # first try to quickly solve with newton's method, otherwise 
     # revert to a more robust method
+    
+    v = irr_newton(cashflows,times)
+
     lower,upper = -2.,2.
-    
-    v = try 
-        return irr_newton(cashflows,times)
-    catch e
-        if isa(e,Roots.ConvergenceFailed) || sprint(showerror, e) =="No convergence"
-            return irr_robust(cashflows,times)
-        else
-            throw(e)
-        end
-    end
-    
-    if v <= upper && v >= lower
-        return v
-    else
+    r = rate(v)
+    if isnan(r) || (r >= upper && r <= lower)
         return irr_robust(cashflows,times)
+    else
+        return v
     end
 end
 
@@ -61,16 +54,34 @@ function irr_robust(cashflows, times)
 
 end
 
-irr_newton(cashflows) = irr_newton(cashflows,0:length(cashflows)-1)
 
 function irr_newton(cashflows, times)
+    @assert length(cashflows) >= length(times)
     # use newton's method with hand-coded derivative
-    f(r) =  sum(cf * exp(-r*t) for (cf,t) in zip(cashflows,times))
-    f′(r) = sum(-t*cf * exp(-r*t) for (cf,t) in zip(cashflows,times) if t > 0)
-    # r = Roots.solve(Roots.ZeroProblem((f,f′), 0.0), Roots.Newton())
-    r = Roots.newton(x->(f(x),f(x)/f′(x)),0.0)
+    r = __newtons_method1D_irr(
+        cashflows, 
+        times, 
+        0.001, 
+        1e-9, 
+        100)
     return Periodic(exp(r)-1,1)
 
+end
+
+# an internal function which calculates the 
+# present value and it's derivative in one pass
+# for use in newton's method
+function __pv_div_pv′(r,cashflows, times)
+    n = zero(typeof(first(cashflows) * 0.1))
+    d = zero(typeof(first(cashflows) * 0.1))
+    @turbo for i ∈ eachindex(cashflows)
+        cf = cashflows[i]
+        t = times[i]
+        a = cf * exp(-r*t)
+        n += a
+        d += a * -t
+    end
+    return n/d
 end
 
 """
@@ -80,3 +91,17 @@ end
     An alias for `internal_rate_of_return`.
 """
 irr = internal_rate_of_return
+
+# modified from
+# Algorithms for Optimization, Mykel J. Kochenderfer and Tim A. Wheeler, pg 88
+function __newtons_method1D_irr(cashflows, times, x, ε, k_max) 
+    k =1 
+    Δ = Inf
+    while abs(Δ) > ε && k ≤ k_max
+        # @show x,H(x),  ∇f(x)
+        Δ = __pv_div_pv′(x,cashflows,times)
+        x -= Δ
+        k += 1
+    end
+    return x 
+end
