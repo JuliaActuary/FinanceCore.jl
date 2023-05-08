@@ -28,8 +28,8 @@ p(rate) = Periodic(rate,1)
     @test irr([-100,100]) ≈ p(0.)
     @test isnothing(irr([100,100])) # answer is -1, but search range won't find it
     
-    # test an infinite irr
-    @test rate(irr([-1e8,0.,0.,0.],0:3)) == Inf
+    # test the unsolvable
+    @test isnothing(irr([-1e8,0.,0.,0.],0:3))
 
 end
 
