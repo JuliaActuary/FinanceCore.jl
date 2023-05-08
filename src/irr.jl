@@ -54,7 +54,6 @@ function irr_robust(cashflows, times)
 
 end
 
-irr_newton(cashflows) = irr_newton(cashflows,0:length(cashflows)-1)
 
 function irr_newton(cashflows, times)
     @assert length(cashflows) >= length(times)
