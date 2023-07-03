@@ -29,18 +29,20 @@ present_value(0.1, [10,20],times)
 ```
 
 """
-present_value(r, x, t=eachindex(x)) = _present_value(Base.IteratorEltype(x), r, x, t)
-
-# pattern for dispatching on element type taken from
-# https://discourse.julialang.org/t/dispatch-over-element-type/93769/8
-_present_value(::Base.HasEltype, r, x, t) = _present_value(eltype(x), r, x, t)
-
-function _present_value(t, r, x, times)
-    mapreduce((xi, ti) -> xi * discount(r, ti), +, x, times)
+function present_value(r, x, times)
+    mapreduce(xi, ti -> present_value(r, xi, ti), +, x, times)
+end
+function present_value(r, x)
+    mapreduce(px -> present_value(r, last(px), first(px)), +, pairs(x))
 end
 
-function _present_value(::Type{C}, r, x, times) where {C<:Cashflow}
-    mapreduce(xi -> xi.amount * discount(r, xi.time), +, x)
+# time is ignored in favor of the time inside the cashflow
+function present_value(r, x::C, time=nothing) where {C<:Cashflow}
+    x.amount * discount(r, x.time)
+end
+
+function present_value(r, x::R, time) where {R<:Real}
+    x * discount(r, time)
 end
 
 const pv = present_value
