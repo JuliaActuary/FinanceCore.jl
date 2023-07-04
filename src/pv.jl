@@ -20,10 +20,12 @@ julia> present_value(Continuous(0.1), [10,20])
 
 """
 function present_value(r, x, times)
-    LoopVectorization.vmapreduce((xi, ti) -> present_value(r, xi, ti), +, x, times)
+    # previously tried LoopVectorization.vmapreduce, but it didn't play well with 
+    # dual numbers when differentiated
+    mapreduce((xi, ti) -> present_value(r, xi, ti), +, x, times)
 end
 function present_value(r, x)
-    LoopVectorization.vmapreduce(px -> present_value(r, last(px), first(px)), +, pairs(x))
+    mapreduce(px -> present_value(r, last(px), first(px)), +, pairs(x))
 end
 
 # time is ignored in favor of the time inside the cashflow
