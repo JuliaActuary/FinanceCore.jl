@@ -17,7 +17,7 @@ If you are extending a function or type as a user or developer, then it would be
 
 ### Reexported by Yields.jl
 - `AbstractYield`
-- `Rate`s and `CompoundingFrequency`s 
+- `Rate`s and `Frequency`s 
 - `discount`, `accumulation`, and `forward` functions
 
 ### Used by multiple packages

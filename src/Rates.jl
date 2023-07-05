@@ -1,6 +1,6 @@
 
-abstract type CompoundingFrequency end
-Base.Broadcast.broadcastable(x::T) where {T<:CompoundingFrequency} = Ref(x)
+abstract type Frequency end
+Base.Broadcast.broadcastable(x::T) where {T<:Frequency} = Ref(x)
 
 """ 
     Continuous()
@@ -16,7 +16,7 @@ Rate(0.01, Continuous())
 
 See also: [`Periodic`](@ref)
 """
-struct Continuous <: CompoundingFrequency end
+struct Continuous <: Frequency end
 
 
 """ 
@@ -53,7 +53,7 @@ Rate(0.01, Periodic(2))
 
 See also: [`Continuous`](@ref)
 """
-struct Periodic <: CompoundingFrequency
+struct Periodic <: Frequency
     frequency::Int
 end
 
@@ -85,7 +85,7 @@ See also: [`Continuous`](@ref)
 """
 Periodic(x, frequency) = Periodic(frequency).(x)
 
-struct Rate{N,T<:CompoundingFrequency}
+struct Rate{N,T<:Frequency}
     value::N
     compounding::T
 end
@@ -95,7 +95,7 @@ Base.Broadcast.broadcastable(ic::T) where {T<:Rate} = Ref(ic)
 
 """
     Rate(rate[,frequency=1])
-    Rate(rate,frequency::CompoundingFrequency)
+    Rate(rate,frequency::Frequency)
 
 Rate is a type that encapsulates an interest `rate` along with its compounding `frequency`.
 
@@ -142,7 +142,7 @@ Rate(rate) = Rate(rate, Periodic(1))
 Rate(x, frequency::T) where {T<:Real} = isinf(frequency) ? Rate(x, Continuous()) : Rate(x, Periodic(frequency))
 
 """
-    convert(cf::CompoundingFrequency,r::Rate) 
+    convert(cf::Frequency,r::Rate) 
 
 Returns a `Rate` with an equivalent discount but represented with a different compounding frequency.
 
@@ -159,11 +159,11 @@ julia> convert(Continuous(),r)
 Rate(0.009995835646701251, Continuous())
 ```
 """
-function Base.convert(cf::T, r::Rate{<:Any,<:CompoundingFrequency}) where {T<:CompoundingFrequency}
+function Base.convert(cf::T, r::Rate{<:Any,<:Frequency}) where {T<:Frequency}
     convert.(cf, r, r.compounding)
 end
 
-function Base.convert(cf::T, r::R) where {R<:Real} where {T<:CompoundingFrequency}
+function Base.convert(cf::T, r::R) where {R<:Real} where {T<:Frequency}
     Rate(r, cf)
 end
 
@@ -190,7 +190,7 @@ end
 function Continuous(r::Rate{<:Any,<:Continuous})
     r
 end
-function Periodic(r::Rate{<:Any,<:CompoundingFrequency}, frequency::Int)
+function Periodic(r::Rate{<:Any,<:Frequency}, frequency::Int)
     convert.(Periodic(frequency), r)
 end
 
@@ -210,7 +210,7 @@ julia> rate(r)
 0.03
 ```
 """
-function rate(r::Rate{<:Any,<:CompoundingFrequency})
+function rate(r::Rate{<:Any,<:Frequency})
     r.value
 end
 
