@@ -37,7 +37,7 @@ amount(x::C) where {C<:Cashflow} = x.amount
 amount(x::R) where {R<:Real} = x
 
 """
-    time(x,t)
+    timepoint(x,t)
 
 If `x` is an object with a defined time component (e.g. a `Cashflow`), will return that time component, otherwise
 will return `t`. This is useful in handling situations where you want to handle either `Cashflow`s or separate amount and time vectors.
@@ -45,16 +45,16 @@ will return `t`. This is useful in handling situations where you want to handle 
 # Example
 
 ```julia-repl
-julia> FinanceCore.time(Cashflow(1.,3.),"ignored")
+julia> FinanceCore.timepoint(Cashflow(1.,3.),"ignored")
 3.0
 
-julia> FinanceCore.time(1.,4.)
+julia> FinanceCore.timepoint(1.,4.)
 4.0
 ```
 
 """
-time(x::C, t) where {C<:Cashflow} = x.time
-time(x::R, t) where {R<:Real} = t
+timepoint(x::C, t) where {C<:Cashflow} = x.time
+timepoint(x::R, t) where {R<:Real} = t
 Base.isapprox(a::C, b::C) where {C<:Cashflow} = isapprox(a.amount, b.amount) && isapprox(a.time, b.time)
 Base.convert(::Type{Cashflow{A,B}}, y::Cashflow{C,D}) where {A,B,C,D} = Cashflow(A(y.amount), B(y.time))
 
