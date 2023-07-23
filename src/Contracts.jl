@@ -53,10 +53,42 @@ julia> FinanceCore.timepoint(1.,4.)
 ```
 
 """
-timepoint(x::C, t) where {C<:Cashflow} = x.time
+timepoint(x::C, t=x.time) where {C<:Cashflow} = t
 timepoint(x::R, t) where {R<:Real} = t
-Base.isapprox(a::C, b::C) where {C<:Cashflow} = isapprox(a.amount, b.amount) && isapprox(a.time, b.time)
+
 Base.convert(::Type{Cashflow{A,B}}, y::Cashflow{C,D}) where {A,B,C,D} = Cashflow(A(y.amount), B(y.time))
+
+function Base.isapprox(a::C, b::D; atol::Real=0, rtol::Real=atol > 0 ? 0 : √eps()) where {C<:Cashflow,D<:Cashflow}
+    amt = isapprox(amount(a), amount(b); atol, rtol)
+    return amt && isapprox(timepoint(a), timepoint(b); atol, rtol)
+end
+
+function Base.:+(c1::C, c2::D) where {C<:Cashflow,D<:Cashflow}
+    if timepoint(c1) ≈ timepoint(c2)
+        Cashflow(amount(c1) + amount(c2), timepoint(c1))
+    else
+        throw(ArgumentError("Cashflow timepoints must be the same. Got $(timepoint(c1)) and $(timepoint(c2))."))
+    end
+end
+
+function Base.:-(c1::C, c2::D) where {C<:Cashflow,D<:Cashflow}
+    if timepoint(c1) ≈ timepoint(c2)
+        Cashflow(amount(c1) - amount(c2), timepoint(c1))
+    else
+        throw(ArgumentError("Cashflow timepoints must be the same. Got $(timepoint(c1)) and $(timepoint(c2))."))
+    end
+end
+
+function Base.:*(c1::C, c2::D) where {C<:Cashflow,D<:Real}
+    Cashflow(amount(c1) * c2, timepoint(c1))
+end
+function Base.:*(c1::D, c2::C) where {C<:Cashflow,D<:Real}
+    Cashflow(amount(c2) * c1, timepoint(c2))
+end
+function Base.:/(c1::C, c2::D) where {C<:Cashflow,D<:Real}
+    Cashflow(amount(c1) / c2, timepoint(c1))
+end
+
 
 struct Composite{A,B} <: AbstractContract
     a::A
