@@ -56,7 +56,7 @@ julia> FinanceCore.timepoint(1.,4.)
 timepoint(x::C, t=x.time) where {C<:Cashflow} = t
 timepoint(x::R, t) where {R<:Real} = t
 
-Base.convert(::Type{Cashflow{A,B}}, y::Cashflow{C,D}) where {A,B,C,D} = Cashflow(A(y.amount), B(y.time))
+# Base.convert(::Type{Cashflow{A,B}}, y::Cashflow{C,D}) where {A,B,C,D} = Cashflow(A(y.amount), B(y.time))
 
 function Base.isapprox(a::C, b::D; atol::Real=0, rtol::Real=atol > 0 ? 0 : √eps()) where {C<:Cashflow,D<:Cashflow}
     amt = isapprox(amount(a), amount(b); atol, rtol)

@@ -10,7 +10,7 @@ include("irr.jl")
 export irr, internal_rate_of_return
 
 include("Contracts.jl")
-export Cashflow, Quote, maturity, timepoint, amount
+export Cashflow, Quote, maturity, timepoint, amount, Composite
 
 include("pv.jl")
 export pv, present_value
