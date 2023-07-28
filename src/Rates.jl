@@ -1,6 +1,6 @@
 
-abstract type CompoundingFrequency end
-Base.Broadcast.broadcastable(x::T) where {T<:CompoundingFrequency} = Ref(x)
+abstract type Frequency end
+Base.Broadcast.broadcastable(x::T) where {T<:Frequency} = Ref(x)
 
 """ 
     Continuous()
@@ -16,7 +16,7 @@ Rate(0.01, Continuous())
 
 See also: [`Periodic`](@ref)
 """
-struct Continuous <: CompoundingFrequency end
+struct Continuous <: Frequency end
 
 
 """ 
@@ -32,7 +32,7 @@ See also: [`Periodic`](@ref)
 Continuous(rate) = Continuous().(rate)
 
 function (c::Continuous)(r)
-    convert.(c,r)
+    convert.(c, r)
 end
 
 """ 
@@ -53,17 +53,17 @@ Rate(0.01, Periodic(2))
 
 See also: [`Continuous`](@ref)
 """
-struct Periodic <: CompoundingFrequency
+struct Periodic <: Frequency
     frequency::Int
 end
 
 function Periodic(frequency::T) where {T<:AbstractFloat}
-    f = Int(round(frequency,digits=8))
+    f = Int(round(frequency, digits=8))
     Periodic(f)
 end
 
 
-function (p::Periodic)(r) 
+function (p::Periodic)(r)
     convert.(p, r)
 end
 
@@ -85,7 +85,7 @@ See also: [`Continuous`](@ref)
 """
 Periodic(x, frequency) = Periodic(frequency).(x)
 
-struct Rate{N<:Real,T<:CompoundingFrequency} <: AbstractYield
+struct Rate{N,T<:Frequency}
     value::N
     compounding::T
 end
@@ -95,7 +95,7 @@ Base.Broadcast.broadcastable(ic::T) where {T<:Rate} = Ref(ic)
 
 """
     Rate(rate[,frequency=1])
-    Rate(rate,frequency::CompoundingFrequency)
+    Rate(rate,frequency::Frequency)
 
 Rate is a type that encapsulates an interest `rate` along with its compounding `frequency`.
 
@@ -142,7 +142,7 @@ Rate(rate) = Rate(rate, Periodic(1))
 Rate(x, frequency::T) where {T<:Real} = isinf(frequency) ? Rate(x, Continuous()) : Rate(x, Periodic(frequency))
 
 """
-    convert(cf::CompoundingFrequency,r::Rate) 
+    convert(cf::Frequency,r::Rate) 
 
 Returns a `Rate` with an equivalent discount but represented with a different compounding frequency.
 
@@ -159,12 +159,12 @@ julia> convert(Continuous(),r)
 Rate(0.009995835646701251, Continuous())
 ```
 """
-function Base.convert(cf::T, r::Rate{<:Real,<:CompoundingFrequency}) where {T<:CompoundingFrequency}
+function Base.convert(cf::T, r::Rate{<:Any,<:Frequency}) where {T<:Frequency}
     convert.(cf, r, r.compounding)
 end
 
-function Base.convert(cf::T, r::R) where {R<:Real} where {T<:CompoundingFrequency}
-    Rate(r,cf)
+function Base.convert(cf::T, r::R) where {R<:Real} where {T<:Frequency}
+    Rate(r, cf)
 end
 
 function Base.convert(to::Continuous, r, from::Continuous)
@@ -184,13 +184,13 @@ function Base.convert(to::Periodic, r, from::Periodic)
     return convert.(to, c, Continuous())
 end
 
-function Continuous(r::Rate{<:Real,<:Periodic})
+function Continuous(r::Rate{<:Any,<:Periodic})
     convert.(Continuous(), r)
 end
-function Continuous(r::Rate{<:Real,<:Continuous})
+function Continuous(r::Rate{<:Any,<:Continuous})
     r
 end
-function Periodic(r::Rate{<:Real,<:CompoundingFrequency},frequency::Int)
+function Periodic(r::Rate{<:Any,<:Frequency}, frequency::Int)
     convert.(Periodic(frequency), r)
 end
 
@@ -210,21 +210,21 @@ julia> rate(r)
 0.03
 ```
 """
-function rate(r::Rate{<:Real,<:CompoundingFrequency})
+function rate(r::Rate{<:Any,<:Frequency})
     r.value
 end
 
-function Base.isapprox(a::Rate{N,T}, b::Rate{N,T}; atol::Real = 0, rtol::Real = atol > 0 ? 0 : √eps()) where {T<:Periodic,N<:Real}
-    c = convert(a.compounding,b)
+function Base.isapprox(a::Rate{N,T}, b::Rate{N,T}; atol::Real=0, rtol::Real=atol > 0 ? 0 : √eps()) where {T<:Periodic,N}
+    c = convert(a.compounding, b)
     return (a.compounding.frequency == c.compounding.frequency) && isapprox(rate(a), rate(c); atol, rtol)
 end
 
-function Base.isapprox(a::Rate{N,T}, b::Rate{N,T}; atol::Real = 0, rtol::Real = atol > 0 ? 0 : √eps()) where {T<:Continuous,N<:Real}
+function Base.isapprox(a::Rate{N,T}, b::Rate{N,T}; atol::Real=0, rtol::Real=atol > 0 ? 0 : √eps()) where {T<:Continuous,N}
     return isapprox(rate(a), rate(b); atol, rtol)
 end
 
 # the fallback for rates not of the same type
-function Base.isapprox(a::T, b::N; atol::Real = 0, rtol::Real = atol > 0 ? 0 : √eps()) where {T<:Rate,N<:Rate}
+function Base.isapprox(a::T, b::N; atol::Real=0, rtol::Real=atol > 0 ? 0 : √eps()) where {T<:Rate,N<:Rate}
     return isapprox(convert(b.compounding, a), b; atol, rtol)
 end
 
@@ -252,9 +252,9 @@ julia> discount(0.03, 5, 10)
 ```
 """
 
-discount(rate::T, t) where {T<:Real} = discount(Rate(rate), t)
-discount(rate::Rate{<:Real, <:Continuous}, t) = exp(-rate.value * t)
-discount(rate::Rate{<:Real, <:Periodic}, t) = (1 + rate.value / rate.compounding.frequency)^(-rate.compounding.frequency * t)
+discount(rate, t) = discount(Rate(rate), t)
+discount(rate::Rate{<:Any,<:Continuous}, t) = exp(-rate.value * t)
+discount(rate::Rate{<:Any,<:Periodic}, t) = (1 + rate.value / rate.compounding.frequency)^(-rate.compounding.frequency * t)
 discount(rate, from, to) = discount(rate, to - from)
 
 """
@@ -281,13 +281,13 @@ julia> accumulation(0.03, 5, 10)
 """
 
 accumulation(rate, t) = accumulation(Rate(rate), t)
-accumulation(rate::Rate{<:Real, <:Continuous}, t) = exp(rate.value * t)
-accumulation(rate::Rate{<:Real, <:Periodic}, t) = (1 + rate.value / rate.compounding.frequency)^(rate.compounding.frequency * t)
+accumulation(rate::Rate{<:Any,<:Continuous}, t) = exp(rate.value * t)
+accumulation(rate::Rate{<:Any,<:Periodic}, t) = (1 + rate.value / rate.compounding.frequency)^(rate.compounding.frequency * t)
 accumulation(rate, from, to) = accumulation(rate, to - from)
 
-Base.zero(rate::T,t) where {T<:Rate} = rate
-forward(rate::T,to) where {T<:Rate} = rate
-forward(rate::T,from,to) where {T<:Rate} = rate
+Base.zero(rate::T, t) where {T<:Rate} = rate
+forward(rate::T, to) where {T<:Rate} = rate
+forward(rate::T, from, to) where {T<:Rate} = rate
 
 """
     +(Yields.Rate, T<:Real)
@@ -306,24 +306,24 @@ julia> Yields.Periodic(0.04,2) + 0.01
 Yields.Rate{Float64, Yields.Periodic}(0.05, Yields.Periodic(2))
 ```
 """
-function Base.:+(a::Rate{N,T}, b::Real) where {N<:Real,T<:Continuous}
+function Base.:+(a::Rate{N,T}, b::Real) where {N,T<:Continuous}
     return Continuous(a.value + b)
 end
-function Base.:+(a::Real, b::Rate{N,T}) where {N<:Real,T<:Continuous}
+function Base.:+(a::Real, b::Rate{N,T}) where {N,T<:Continuous}
     return Continuous(b.value + a)
 end
 
-function Base.:+(a::Rate{N,T}, b::Real) where {N<:Real, T<:Periodic}
-    return Periodic(a.value + b,a.compounding.frequency)
+function Base.:+(a::Rate{N,T}, b::Real) where {N,T<:Periodic}
+    return Periodic(a.value + b, a.compounding.frequency)
 end
-function Base.:+(a::Real, b::Rate{N,T}) where {N<:Real, T<:Periodic}
-    return Periodic(b.value + a,b.compounding.frequency)
+function Base.:+(a::Real, b::Rate{N,T}) where {N,T<:Periodic}
+    return Periodic(b.value + a, b.compounding.frequency)
 end
 
-function Base.:+(a::Rate{N,T},b::Rate{N,U}) where {N<:Real,T,U}
+function Base.:+(a::T, b::U) where {T<:Rate,U<:Rate}
     a_rate = rate(a)
-    b_rate = rate(convert(a.compounding,b))
-    r = Rate(a_rate + b_rate,a.compounding)
+    b_rate = rate(convert(a.compounding, b))
+    r = Rate(a_rate + b_rate, a.compounding)
     return r
 end
 
@@ -346,54 +346,53 @@ Yields.Rate{Float64, Yields.Periodic}(0.03, Yields.Periodic(2))
 
 ```
 """
-function Base.:-(a::Rate{N,T}, b::Real) where {N<:Real,T<:Continuous}
+function Base.:-(a::Rate{N,T}, b::Real) where {N,T<:Continuous}
     return Continuous(a.value - b)
 end
-function Base.:-(a::Real, b::Rate{N,T}) where {N<:Real,T<:Continuous}
-    return Continuous( a - b.value)
+function Base.:-(a::Real, b::Rate{N,T}) where {N,T<:Continuous}
+    return Continuous(a - b.value)
 end
 
-function Base.:-(a::Rate{N,T}, b::Real) where {N<:Real, T<:Periodic}
+function Base.:-(a::Rate{N,T}, b::Real) where {N,T<:Periodic}
     return Periodic(a.value - b, a.compounding.frequency)
 end
-function Base.:-(a::Real, b::Rate{N,T}) where {N<:Real, T<:Periodic}
+function Base.:-(a::Real, b::Rate{N,T}) where {N,T<:Periodic}
     return Periodic(a - b.value, b.compounding.frequency)
 end
-function Base.:-(a::Rate{N,U},b::Rate{N,U}) where {N<:Real,T,U}
+function Base.:-(a::T, b::U) where {T<:Rate,U<:Rate}
     a_rate = rate(a)
-    b_rate = rate(convert(a.compounding,b))
-    r = Rate(a_rate - b_rate,a.compounding)
+    b_rate = rate(convert(a.compounding, b))
+    r = Rate(a_rate - b_rate, a.compounding)
     return r
 end
 
 """
-    *(Yields.Rate, T<:Real)
-    *(T<:Real, Yields.Rate)
+    *(Yields.Rate, T)
+    *(T, Yields.Rate)
 
 The multiplication of a Rate with a scalar will inherit the type of the `Rate`, or the first argument's type if both are `Rate`s.
 """
-function Base.:*(a::Rate{N,T}, b::Real) where {N<:Real,T<:Continuous}
+function Base.:*(a::Rate{N,T}, b::Real) where {N,T<:Continuous}
     return Continuous(a.value * b)
 end
-function Base.:*(a::Real, b::Rate{N,T}) where {N<:Real,T<:Continuous}
-    return Continuous( a * b.value)
+function Base.:*(a::Real, b::Rate{N,T}) where {N,T<:Continuous}
+    return Continuous(a * b.value)
 end
 
-function Base.:*(a::Rate{N,T}, b::Real) where {N<:Real, T<:Periodic}
+function Base.:*(a::Rate{N,T}, b::Real) where {N,T<:Periodic}
     return Periodic(a.value * b, a.compounding.frequency)
 end
-function Base.:*(a::Real, b::Rate{N,T}) where {N<:Real, T<:Periodic}
+function Base.:*(a::Real, b::Rate{N,T}) where {N,T<:Periodic}
     return Periodic(a * b.value, b.compounding.frequency)
 end
 
 
 """
-    /(Yields.Rate, T<:Real)
-    /(T<:Real, Yields.Rate)
+    /(x::Yields.Rate, y::Real)
 
 The division of a Rate with a scalar will inherit the type of the `Rate`, or the first argument's type if both are `Rate`s.
 """
-function Base.:/(a::Rate{N,T}, b::Real) where {N<:Real,T<:Continuous}
+function Base.:/(a::Rate{N,T}, b::Real) where {N,T<:Continuous}
     return Continuous(a.value / b)
 end
 
@@ -402,7 +401,7 @@ end
 #     return Continuous( a / b.value)
 # end
 
-function Base.:/(a::Rate{N,T}, b::Real) where {N<:Real, T<:Periodic}
+function Base.:/(a::Rate{N,T}, b::Real) where {N,T<:Periodic}
     return Periodic(a.value / b, a.compounding.frequency)
 end
 
@@ -413,7 +412,7 @@ end
 
 
 """
-    <(Rate,Rate)
+    <(x::Rate,y::Rate)
 
 Convert the second argument to the periodicity of the first and compare the scalar rate values to determine if the first argument has a lower force of interest than the second.
 
@@ -424,8 +423,8 @@ julia> Yields.Periodic(0.03,100) < Yields.Continuous(0.03)
 true
 ```
 """
-function Base.:<(a::Rate{N,T},b::Rate{N,U}) where {N<:Real,T,U}
-    bc = convert(a.compounding,b)
+function Base.:<(a::T, b::U) where {T<:Rate,U<:Rate}
+    bc = convert(a.compounding, b)
     return rate(a) < rate(bc)
 end
 
@@ -441,7 +440,7 @@ julia> Yields.Periodic(0.03,100) > Yields.Continuous(0.03)
 false
 ```
 """
-function Base.:>(a::Rate{N,T},b::Rate{N,U}) where {N<:Real,T,U}
-    bc = convert(a.compounding,b)
+function Base.:>(a::T, b::U) where {T<:Rate,U<:Rate}
+    bc = convert(a.compounding, b)
     return rate(a) > rate(bc)
 end

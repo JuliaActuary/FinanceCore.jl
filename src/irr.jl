@@ -23,34 +23,34 @@ function internal_rate_of_return(cashflows)
     return internal_rate_of_return(cashflows, 0:length(cashflows)-1)
 end
 
-function internal_rate_of_return(cashflows,times)
+function internal_rate_of_return(cashflows, times)
     # first try to quickly solve with newton's method, otherwise 
     # revert to a more robust method
-    
-    v = irr_newton(cashflows,times)
 
-    lower,upper = -2.,2.
+    v = irr_newton(cashflows, times)
+
+    lower, upper = -2.0, 2.0
     r = rate(v)
     if isnan(r) || (r >= upper && r <= lower)
-        return irr_robust(cashflows,times)
+        return irr_robust(cashflows, times)
     else
         return v
     end
 end
 
-irr_robust(cashflows) = irr_robust(cashflows,0:length(cashflows)-1)
+irr_robust(cashflows) = irr_robust(cashflows, 0:length(cashflows)-1)
 
 function irr_robust(cashflows, times)
-    f(i) =  sum(cf / (1+i)^t for (cf,t) in zip(cashflows,times))
+    f(i) = sum(cf / (1 + i)^t for (cf, t) in zip(cashflows, times))
     # lower bound at -.99 because otherwise we can start taking the root of a negative number
     # when a time is fractional. 
     roots = Roots.find_zeros(f, -0.99, 2)
-    
+
     # short circuit and return nothing if no roots found
     isempty(roots) && return nothing
     # find and return the one nearest zero
     min_i = argmin(roots)
-    return Periodic(roots[min_i],1)
+    return Periodic(roots[min_i], 1)
 
 end
 
@@ -59,29 +59,29 @@ function irr_newton(cashflows, times)
     @assert length(cashflows) >= length(times)
     # use newton's method with hand-coded derivative
     r = __newtons_method1D_irr(
-        cashflows, 
-        times, 
-        0.001, 
-        1e-9, 
+        cashflows,
+        times,
+        0.001,
+        1e-9,
         100)
-    return Periodic(exp(r)-1,1)
+    return Periodic(exp(r) - 1, 1)
 
 end
 
 # an internal function which calculates the 
 # present value and it's derivative in one pass
 # for use in newton's method
-function __pv_div_pv′(r,cashflows, times)
+function __pv_div_pv′(r, cashflows, times)
     n = zero(typeof(first(cashflows) * 0.1))
     d = zero(typeof(first(cashflows) * 0.1))
-    @turbo for i ∈ eachindex(cashflows)
+    @turbo warn_check_args = false for i ∈ eachindex(cashflows)
         cf = cashflows[i]
         t = times[i]
-        a = cf * exp(-r*t)
+        a = cf * exp(-r * t)
         n += a
         d += a * -t
     end
-    return n/d
+    return n / d
 end
 
 """
@@ -94,14 +94,14 @@ irr = internal_rate_of_return
 
 # modified from
 # Algorithms for Optimization, Mykel J. Kochenderfer and Tim A. Wheeler, pg 88
-function __newtons_method1D_irr(cashflows, times, x, ε, k_max) 
-    k =1 
+function __newtons_method1D_irr(cashflows, times, x, ε, k_max)
+    k = 1
     Δ = Inf
     while abs(Δ) > ε && k ≤ k_max
         # @show x,H(x),  ∇f(x)
-        Δ = __pv_div_pv′(x,cashflows,times)
+        Δ = __pv_div_pv′(x, cashflows, times)
         x -= Δ
         k += 1
     end
-    return x 
+    return x
 end
