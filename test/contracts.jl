@@ -7,6 +7,7 @@
 
         @test maturity(cf11) == 1
         @test timepoint(cf11) == 1
+        @test timepoint(cf11, 4) == 1
         @test timepoint(1, 2) == 2
 
         q = Quote(1.0, cf11)
