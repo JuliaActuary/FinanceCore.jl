@@ -53,7 +53,7 @@ julia> FinanceCore.timepoint(1.,4.)
 ```
 
 """
-timepoint(x::C, t=x.time) where {C<:Cashflow} = t
+timepoint(x::C, t=x.time) where {C<:Cashflow} = x.time
 timepoint(x::R, t) where {R<:Real} = t
 
 # Base.convert(::Type{Cashflow{A,B}}, y::Cashflow{C,D}) where {A,B,C,D} = Cashflow(A(y.amount), B(y.time))
