@@ -19,6 +19,6 @@ makedocs(;
 )
 
 deploydocs(;
-    repo=Remotes.GitHub("JuliaActuary", "FinanceCore.jl"),
+    repo="github.com/JuliaActuary/FinanceCore.jl",
     devbranch="main"
 )
