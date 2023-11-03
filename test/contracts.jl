@@ -19,6 +19,7 @@
     @testset "algebra" begin
         @test cf11 == cf11
         @test cf11 ≈ Cashflow(1.0, 1.0)
+        @test -cf11 ≈ Cashflow(-1.0, 1.0)
 
         @test cf11 + cf11 == Cashflow(2, 1)
         @test cf11 - cf11 == Cashflow(0, 1)
