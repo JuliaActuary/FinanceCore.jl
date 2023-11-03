@@ -1,4 +1,19 @@
 # Allow Dates or real timesteps
+"""
+    Timepoint(a)
+
+Summary
+≡≡≡≡≡≡≡≡≡
+
+Timepoint is a type alias for Union{T,Dates.Date} that can be used to represent a point in time. It can be either a `Dates.Date` or a `Real` number. If defined as a real number, the interpretation is the number of (fractional) periods since time zero.
+
+Currently, the usage of `Dates.Date` is not well supported across the JuliaActuary ecosystem but this type is in place such that it can be built upon further.
+
+Supertype Hierarchy
+≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡
+
+    Timepoint{T} = Union{T,Dates.Date} <: Any
+"""
 const Timepoint{T} = Union{T,Dates.Date} where {T<:Real}
 
 abstract type AbstractContract end
@@ -19,12 +34,30 @@ end
 maturity(q::Quote) = maturity(q.instrument)
 Base.isapprox(a::Quote, b::Quote) = isapprox(a.price, b.price) && isapprox(a.instrument, b.instrument)
 
+
+"""
+    Cashflow(amount,time)
+
+A `Cahflow{A,B}` is a contract that pays an `amount` at `time`. 
+
+Cashflows can be:
+
+- negated with the unary `-` operator. 
+- added/subtracted together but note that the `time` must be `isapprox` equal.
+- multiplied/divided by a scalar.
+
+Supertype Hierarchy
+≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡≡
+
+    Cashflow{A<:Real, B<:Timepoint} <: FinanceCore.AbstractContract <: Any
+"""
 struct Cashflow{N<:Real,T<:Timepoint} <: AbstractContract
     amount::N
     time::T
 end
 
 maturity(c::C) where {C<:Cashflow} = c.time
+Base.:-(c::C) where {C<:Cashflow} = Cashflow(-c.amount, c.time)
 
 """
     amount(x)
@@ -98,6 +131,8 @@ function Base.:/(c1::C, c2::D) where {C<:Cashflow,D<:Real}
 end
 
 """
+    Composite(A,B)
+
 Summary
 ≡≡≡≡≡≡≡≡≡
 
