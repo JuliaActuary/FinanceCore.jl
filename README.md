@@ -4,6 +4,7 @@
 [![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://JuliaActuary.github.io/FinanceCore.jl/dev)
 [![Build Status](https://github.com/JuliaActuary/FinanceCore.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/JuliaActuary/FinanceCore.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/JuliaActuary/FinanceCore.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JuliaActuary/FinanceCore.jl)
+[![Aqua QA](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
 
 
 This repository contains foundational types and routines that are used in other packages. Users should generally prefer to use other JuliaActuary packages which will re-export the FinanceCore data/methods as necessary.
@@ -15,9 +16,9 @@ If you are extending a function or type as a user or developer, then it would be
 ### Reexported by ActuaryUtilities.jl
 - `irr` and `internal_rate_of_return` (reexported by ActuaryUtilities)
 
-### Reexported by Yields.jl
+### Reexported by FinanceModels.jl
 - `AbstractYield`
-- `Rate`s and `Frequency`s 
+- `Rate`s and `Frequency`s
 - `discount`, `accumulation`, and `forward` functions
 
 ### Used by multiple packages
