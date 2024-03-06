@@ -17,7 +17,6 @@ If you are extending a function or type as a user or developer, then it would be
 - `irr` and `internal_rate_of_return` (reexported by ActuaryUtilities)
 
 ### Reexported by FinanceModels.jl
-- `AbstractYield`
 - `Rate`s and `Frequency`s
 - `discount`, `accumulation`, and `forward` functions
 
