@@ -15,9 +15,9 @@ If you are extending a function or type as a user or developer, then it would be
 ### Reexported by ActuaryUtilities.jl
 - `irr` and `internal_rate_of_return` (reexported by ActuaryUtilities)
 
-### Reexported by Yields.jl
+### Reexported by FinanceModels.jl
 - `AbstractYield`
-- `Rate`s and `Frequency`s 
+- `Rate`s and `Frequency`s
 - `discount`, `accumulation`, and `forward` functions
 
 ### Used by multiple packages

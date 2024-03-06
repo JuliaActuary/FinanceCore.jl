@@ -86,7 +86,7 @@
         
     end
 
-    @testset "AbstractYield Interface" begin
+    @testset "Compounding Interface" begin
         c = Continuous(0.03)
         p = Periodic(0.04,2)
 
