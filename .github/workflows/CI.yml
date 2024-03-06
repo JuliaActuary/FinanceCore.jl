@@ -37,6 +37,10 @@ jobs:
       - uses: codecov/codecov-action@v2
         with:
           files: lcov.info
+      - uses: julia-actions/julia-downgrade-compat@v1
+        if: ${{ matrix.version == '1.6' }}
+        with:
+          skip: Pkg, TOML
   docs:
     name: Documentation
     runs-on: ubuntu-latest
