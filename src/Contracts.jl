@@ -58,6 +58,7 @@ end
 
 maturity(c::C) where {C<:Cashflow} = c.time
 Base.:-(c::C) where {C<:Cashflow} = Cashflow(-c.amount, c.time)
+Base.zero(c::C) where {C<:Cashflow} = Cashflow(zero(c.amount), c.time)
 
 """
     amount(x)
