@@ -251,7 +251,6 @@ julia> discount(0.03, 5, 10)
 0.8626087843841639
 ```
 """
-
 discount(rate, t) = discount(Rate(rate), t)
 discount(rate::Rate{<:Any,<:Continuous}, t) = exp(-rate.value * t)
 discount(rate::Rate{<:Any,<:Periodic}, t) = (1 + rate.value / rate.compounding.frequency)^(-rate.compounding.frequency * t)
@@ -279,7 +278,6 @@ julia> accumulation(0.03, 5, 10)
 1.1592740743
 ```
 """
-
 accumulation(rate, t) = accumulation(Rate(rate), t)
 accumulation(rate::Rate{<:Any,<:Continuous}, t) = exp(rate.value * t)
 accumulation(rate::Rate{<:Any,<:Periodic}, t) = (1 + rate.value / rate.compounding.frequency)^(rate.compounding.frequency * t)
