@@ -11,5 +11,5 @@ include("contracts.jl")
 
 using Aqua
 @testset "Aqua.jl" begin
-    Aqua.test_all(FinanceCore; ambiguities=false)
+    Aqua.test_all(FinanceCore; ambiguities = false)
 end
