@@ -85,7 +85,7 @@ end
 
 
 function irr_newton(cashflows, times)
-    @assert length(cashflows) >= length(times)
+    @assert length(cashflows) <= length(times)
     # use newton's method with hand-coded derivative
     r = __newtons_method1D_irr(
         cashflows,
