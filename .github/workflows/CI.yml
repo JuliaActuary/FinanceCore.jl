@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - main
+      - master
+      - 'release-*'
     tags: '*'
   pull_request:
 concurrency:
@@ -25,7 +27,7 @@ jobs:
         arch:
           - x64
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v1
         with:
           version: ${{ matrix.version }}
@@ -45,7 +47,7 @@ jobs:
     name: Documentation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v1
         with:
           version: '1'
@@ -60,3 +62,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Needed due to https://github.com/JuliaDocs/Documenter.jl/issues/1177
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+  runic:
+    name: Runic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: fredrikekre/runic-action@v1
+        with:
+          version: '1'
