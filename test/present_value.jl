@@ -5,9 +5,7 @@
 
     # this vector came from Numpy Financial's test suite with target of 122.89, but that assumes payments are begin of period
     # 117.04 comes from Excel verification with NPV function
-    @test isapprox(pv(0.05, [-15000, 1500, 2500, 3500, 4500, 6000]), 117.04, atol=1e-2)
-
-
+    @test isapprox(pv(0.05, [-15000, 1500, 2500, 3500, 4500, 6000]), 117.04, atol = 1.0e-2)
 
 
     @testset "pv with timepoints" begin

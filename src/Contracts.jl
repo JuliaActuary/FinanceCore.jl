@@ -14,7 +14,7 @@ Supertype Hierarchy
 
     Timepoint{T} = Union{T,Dates.Date} <: Any
 """
-const Timepoint{T} = Union{T,Dates.Date} where {T<:Real}
+const Timepoint{T} = Union{T, Dates.Date} where {T <: Real}
 
 abstract type AbstractContract end
 
@@ -26,7 +26,7 @@ The `price`(`<:Real`) is the observed value , and the `instrument` is the instru
 This can be used, e.g., to calibrate a valuation model to prices for the given instruments - see FinanceModels.jl for more details.
 
 """
-struct Quote{N<:Real,T}
+struct Quote{N <: Real, T}
     price::N
     instrument::T
 end
@@ -51,14 +51,14 @@ Supertype Hierarchy
 
     Cashflow{A<:Real, B<:Timepoint} <: FinanceCore.AbstractContract <: Any
 """
-struct Cashflow{N<:Real,T<:Timepoint} <: AbstractContract
+struct Cashflow{N <: Real, T <: Timepoint} <: AbstractContract
     amount::N
     time::T
 end
 
-maturity(c::C) where {C<:Cashflow} = c.time
-Base.:-(c::C) where {C<:Cashflow} = Cashflow(-c.amount, c.time)
-Base.zero(c::C) where {C<:Cashflow} = Cashflow(zero(c.amount), c.time)
+maturity(c::C) where {C <: Cashflow} = c.time
+Base.:-(c::C) where {C <: Cashflow} = Cashflow(-c.amount, c.time)
+Base.zero(c::C) where {C <: Cashflow} = Cashflow(zero(c.amount), c.time)
 
 """
     amount(x)
@@ -75,8 +75,8 @@ julia> FinanceCore.amount(1.)
 1.0
 ```
 """
-amount(x::C) where {C<:Cashflow} = x.amount
-amount(x::R) where {R<:Real} = x
+amount(x::C) where {C <: Cashflow} = x.amount
+amount(x::R) where {R <: Real} = x
 
 """
     timepoint(x,t)
@@ -95,40 +95,40 @@ julia> FinanceCore.timepoint(1.,4.)
 ```
 
 """
-timepoint(x::C, t=x.time) where {C<:Cashflow} = x.time
-timepoint(x::R, t) where {R<:Real} = t
+timepoint(x::C, t = x.time) where {C <: Cashflow} = x.time
+timepoint(x::R, t) where {R <: Real} = t
 
 # Base.convert(::Type{Cashflow{A,B}}, y::Cashflow{C,D}) where {A,B,C,D} = Cashflow(A(y.amount), B(y.time))
 
-function Base.isapprox(a::C, b::D; atol::Real=0, rtol::Real=atol > 0 ? 0 : √eps()) where {C<:Cashflow,D<:Cashflow}
+function Base.isapprox(a::C, b::D; atol::Real = 0, rtol::Real = atol > 0 ? 0 : √eps()) where {C <: Cashflow, D <: Cashflow}
     amt = isapprox(amount(a), amount(b); atol, rtol)
     return amt && isapprox(timepoint(a), timepoint(b); atol, rtol)
 end
 
-function Base.:+(c1::C, c2::D) where {C<:Cashflow,D<:Cashflow}
-    if timepoint(c1) ≈ timepoint(c2)
+function Base.:+(c1::C, c2::D) where {C <: Cashflow, D <: Cashflow}
+    return if timepoint(c1) ≈ timepoint(c2)
         Cashflow(amount(c1) + amount(c2), timepoint(c1))
     else
         throw(ArgumentError("Cashflow timepoints must be the same. Got $(timepoint(c1)) and $(timepoint(c2))."))
     end
 end
 
-function Base.:-(c1::C, c2::D) where {C<:Cashflow,D<:Cashflow}
-    if timepoint(c1) ≈ timepoint(c2)
+function Base.:-(c1::C, c2::D) where {C <: Cashflow, D <: Cashflow}
+    return if timepoint(c1) ≈ timepoint(c2)
         Cashflow(amount(c1) - amount(c2), timepoint(c1))
     else
         throw(ArgumentError("Cashflow timepoints must be the same. Got $(timepoint(c1)) and $(timepoint(c2))."))
     end
 end
 
-function Base.:*(c1::C, c2::D) where {C<:Cashflow,D<:Real}
-    Cashflow(amount(c1) * c2, timepoint(c1))
+function Base.:*(c1::C, c2::D) where {C <: Cashflow, D <: Real}
+    return Cashflow(amount(c1) * c2, timepoint(c1))
 end
-function Base.:*(c1::D, c2::C) where {C<:Cashflow,D<:Real}
-    Cashflow(amount(c2) * c1, timepoint(c2))
+function Base.:*(c1::D, c2::C) where {C <: Cashflow, D <: Real}
+    return Cashflow(amount(c2) * c1, timepoint(c2))
 end
-function Base.:/(c1::C, c2::D) where {C<:Cashflow,D<:Real}
-    Cashflow(amount(c1) / c2, timepoint(c1))
+function Base.:/(c1::C, c2::D) where {C <: Cashflow, D <: Real}
+    return Cashflow(amount(c1) / c2, timepoint(c1))
 end
 
 """
@@ -157,7 +157,7 @@ Supertype Hierarchy
 
     Composite{A, B} <: FinanceCore.AbstractContract <: Any
 """
-struct Composite{A,B} <: AbstractContract
+struct Composite{A, B} <: AbstractContract
     a::A
     b::B
 end

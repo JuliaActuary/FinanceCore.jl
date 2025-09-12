@@ -20,21 +20,21 @@ julia> present_value(Continuous(0.1), [10,20])
 
 """
 function present_value(r, x, times)
-    # previously tried LoopVectorization.vmapreduce, but it didn't play well with 
+    # previously tried LoopVectorization.vmapreduce, but it didn't play well with
     # dual numbers when differentiated
-    mapreduce((xi, ti) -> present_value(r, xi, ti), +, x, times)
+    return mapreduce((xi, ti) -> present_value(r, xi, ti), +, x, times)
 end
 function present_value(r, x)
-    mapreduce(px -> present_value(r, last(px), first(px)), +, pairs(x))
+    return mapreduce(px -> present_value(r, last(px), first(px)), +, pairs(x))
 end
 
 # time is ignored in favor of the time inside the cashflow
-function present_value(r, x::C, time=nothing) where {C<:Cashflow}
-    x.amount * discount(r, x.time)
+function present_value(r, x::C, time = nothing) where {C <: Cashflow}
+    return x.amount * discount(r, x.time)
 end
 
-function present_value(r, x::R, time) where {R<:Real}
-    x * discount(r, time)
+function present_value(r, x::R, time) where {R <: Real}
+    return x * discount(r, time)
 end
 
 const pv = present_value
