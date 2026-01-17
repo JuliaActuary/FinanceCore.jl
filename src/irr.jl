@@ -23,10 +23,6 @@ function internal_rate_of_return(cashflows::AbstractVector{<:Real})
     return internal_rate_of_return(cashflows, 0:(length(cashflows) - 1))
 end
 
-function internal_rate_of_return(cashflows)
-    throw(ArgumentError("cashflows must be a vector of Real numbers, got $(typeof(cashflows))"))
-end
-
 function internal_rate_of_return(cashflows::Vector{C}) where {C <: Cashflow}
     # first try to quickly solve with newton's method, otherwise
     # revert to a more robust method
