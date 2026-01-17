@@ -12,7 +12,7 @@ p(rate) = Periodic(rate, 1)
     @test isapprox(irr(v[1:4]), p(-0.1821374641455), atol = 0.001)
     @test isapprox(irr(v[1:5]), p(-0.0212448482734), atol = 0.001)
     @test isapprox(irr(v[1:6]), p(0.0866309480365), atol = 0.001)
-    @test_throws ArgumentError irr("hello")
+    @test_throws MethodError irr("hello")
 
 
     # much more challenging to solve b/c of the overflow below zero
