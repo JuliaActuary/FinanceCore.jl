@@ -19,7 +19,7 @@ Will try to return a root within the range [-2,2]. If the fast solver does not f
 
 The solution returned will be in the range [-2,2], but may not be the one nearest zero. For a slightly slower, but more robust version, call `ActuaryUtilities.irr_robust(cashflows,timepoints)` directly.
 """
-function internal_rate_of_return(cashflows)
+function internal_rate_of_return(cashflows::AbstractVector{<:Real})
     return internal_rate_of_return(cashflows, 0:(length(cashflows) - 1))
 end
 
@@ -110,13 +110,34 @@ function irr_newton(cashflows::Vector{C}) where {C <: Cashflow}
 
 end
 
+# Backend trait for vectorization strategy
+abstract type VectorizationBackend end
+struct SimdBackend <: VectorizationBackend end
+struct TurboBackend <: VectorizationBackend end
+
+# Global backend setting - extensions can change this
+const VECTORIZATION_BACKEND = Ref{VectorizationBackend}(SimdBackend())
+
 # an internal function which calculates the
 # present value and it's derivative in one pass
 # for use in newton's method
+#
+# Dispatches to the appropriate backend. When LoopVectorization
+# is loaded, the extension sets VECTORIZATION_BACKEND to TurboBackend()
+# and provides a faster @turbo-based implementation.
 function __pv_div_pv′(r, cashflows, times)
+    return __pv_div_pv′(VECTORIZATION_BACKEND[], r, cashflows, times)
+end
+
+function __pv_div_pv′(r, cashflows::Vector{C}) where {C <: Cashflow}
+    return __pv_div_pv′(VECTORIZATION_BACKEND[], r, cashflows)
+end
+
+# Base @simd implementation
+function __pv_div_pv′(::SimdBackend, r, cashflows, times)
     n = 0.0
     d = 0.0
-    @turbo warn_check_args = false for i in eachindex(cashflows)
+    @inbounds @simd for i in eachindex(cashflows)
         cf = cashflows[i]
         t = times[i]
         a = cf * exp(-r * t)
@@ -126,10 +147,10 @@ function __pv_div_pv′(r, cashflows, times)
     return n / d
 end
 
-function __pv_div_pv′(r, cashflows::Vector{C}) where {C <: Cashflow}
+function __pv_div_pv′(::SimdBackend, r, cashflows::Vector{C}) where {C <: Cashflow}
     n = 0.0
     d = 0.0
-    @turbo warn_check_args = false for i in eachindex(cashflows)
+    @inbounds @simd for i in eachindex(cashflows)
         cf = amount(cashflows[i])
         t = timepoint(cashflows[i])
         a = cf * exp(-r * t)

@@ -1,6 +1,5 @@
 module FinanceCore
 import Roots
-using LoopVectorization
 using Dates
 
 include("Rates.jl")
