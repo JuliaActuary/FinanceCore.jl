@@ -420,7 +420,23 @@ julia> Yields.Periodic(0.03,100) < Yields.Continuous(0.03)
 true
 ```
 """
-function Base.:<(a::T, b::U) where {T <: Rate, U <: Rate}
+# Note: We define separate methods for each combination of Periodic/Continuous
+# instead of using `where {T <: Rate, U <: Rate}` to avoid compilation invalidations.
+# Abstract type bounds like `<: Rate` cause Julia to invalidate previously compiled
+# code for `<(::Any, ::Any)` signatures. Concrete type combinations don't have this issue.
+# See: https://juliadebug.github.io/SnoopCompile.jl/stable/tutorials/invalidations/
+function Base.:<(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2}
+    bc = convert(a.compounding, b)
+    return rate(a) < rate(bc)
+end
+function Base.:<(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2}
+    return rate(a) < rate(b)
+end
+function Base.:<(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2}
+    bc = convert(a.compounding, b)
+    return rate(a) < rate(bc)
+end
+function Base.:<(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2}
     bc = convert(a.compounding, b)
     return rate(a) < rate(bc)
 end
@@ -437,7 +453,21 @@ julia> Yields.Periodic(0.03,100) > Yields.Continuous(0.03)
 false
 ```
 """
-function Base.:>(a::T, b::U) where {T <: Rate, U <: Rate}
+# Note: We define separate methods for each combination of Periodic/Continuous
+# instead of using `where {T <: Rate, U <: Rate}` to avoid compilation invalidations.
+# See comment above for `<` methods.
+function Base.:>(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2}
+    bc = convert(a.compounding, b)
+    return rate(a) > rate(bc)
+end
+function Base.:>(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2}
+    return rate(a) > rate(b)
+end
+function Base.:>(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2}
+    bc = convert(a.compounding, b)
+    return rate(a) > rate(bc)
+end
+function Base.:>(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2}
     bc = convert(a.compounding, b)
     return rate(a) > rate(bc)
 end
