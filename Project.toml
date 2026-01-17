@@ -1,15 +1,20 @@
 name = "FinanceCore"
 uuid = "b9b1ffdd-6612-4b69-8227-7663be06e089"
-authors = ["alecloudenback <alecloudenback@users.noreply.github.com> and contributors"]
 version = "2.2.2"
+authors = ["alecloudenback <alecloudenback@users.noreply.github.com> and contributors"]
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
-LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
 Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
+
+[weakdeps]
+LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
+
+[extensions]
+FinanceCoreLoopVectorizationExt = "LoopVectorization"
 
 [compat]
 Dates = "1"
-LoopVectorization = "^0.12"
-Roots = "^1.0, 2"
-julia = "1.6"
+LoopVectorization = "0.12"
+Roots = "1, 2"
+julia = "1.9"
