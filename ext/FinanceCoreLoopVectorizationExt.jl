@@ -6,7 +6,7 @@ using LoopVectorization
 
 # Set the backend to TurboBackend when this extension loads
 function __init__()
-    VECTORIZATION_BACKEND[] = TurboBackend()
+    return VECTORIZATION_BACKEND[] = TurboBackend()
 end
 
 # @turbo implementation for TurboBackend
