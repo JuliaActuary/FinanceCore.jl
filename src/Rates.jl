@@ -87,6 +87,24 @@ Periodic(x, frequency) = Periodic(frequency).(x)
 struct Rate{N, T <: Frequency}
     value::N
     compounding::T
+    continuous_value::N  # Precomputed equivalent continuous rate for faster discount/accumulation
+    
+    # Inner constructor for Continuous - continuous_value equals value
+    function Rate{N, T}(value::N, compounding::T, continuous_value::N) where {N, T <: Frequency}
+        return new{N, T}(value, compounding, continuous_value)
+    end
+end
+
+# Outer constructor for Continuous rates - continuous_value equals value
+function Rate(value::N, compounding::Continuous) where {N}
+    return Rate{N, Continuous}(value, compounding, value)
+end
+
+# Outer constructor for Periodic rates - precompute continuous equivalent
+function Rate(value::N, compounding::Periodic) where {N}
+    # continuous_value = n * log(1 + r/n), which is the equivalent continuous rate
+    continuous_value = compounding.frequency * log(1 + value / compounding.frequency)
+    return Rate{N, Periodic}(value, compounding, convert(N, continuous_value))
 end
 
 # make rate a broadcastable type
@@ -251,8 +269,7 @@ julia> discount(0.03, 5, 10)
 ```
 """
 discount(rate, t) = discount(Rate(rate), t)
-discount(rate::Rate{<:Any, <:Continuous}, t) = exp(-rate.value * t)
-discount(rate::Rate{<:Any, <:Periodic}, t) = exp(-rate.compounding.frequency * log(1 + rate.value / rate.compounding.frequency) * t)
+discount(rate::Rate, t) = exp(-rate.continuous_value * t)
 discount(rate, from, to) = discount(rate, to - from)
 
 """
@@ -278,8 +295,7 @@ julia> accumulation(0.03, 5, 10)
 ```
 """
 accumulation(rate, t) = accumulation(Rate(rate), t)
-accumulation(rate::Rate{<:Any, <:Continuous}, t) = exp(rate.value * t)
-accumulation(rate::Rate{<:Any, <:Periodic}, t) = exp(rate.compounding.frequency * log(1 + rate.value / rate.compounding.frequency) * t)
+accumulation(rate::Rate, t) = exp(rate.continuous_value * t)
 accumulation(rate, from, to) = accumulation(rate, to - from)
 
 Base.zero(rate::T, t) where {T <: Rate} = rate
