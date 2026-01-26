@@ -89,10 +89,21 @@ struct Rate{N, T <: Frequency}
     compounding::T
     continuous_value::N  # Precomputed equivalent continuous rate for faster discount/accumulation
     
-    # Inner constructor for Continuous - continuous_value equals value
+    # Inner constructor with all 3 arguments
     function Rate{N, T}(value::N, compounding::T, continuous_value::N) where {N, T <: Frequency}
         return new{N, T}(value, compounding, continuous_value)
     end
+end
+
+# Parametric constructor for Continuous rates (2-arg form)
+function Rate{N, Continuous}(value::N, compounding::Continuous) where {N}
+    return Rate{N, Continuous}(value, compounding, value)
+end
+
+# Parametric constructor for Periodic rates (2-arg form)
+function Rate{N, Periodic}(value::N, compounding::Periodic) where {N}
+    continuous_value = compounding.frequency * log(1 + value / compounding.frequency)
+    return Rate{N, Periodic}(value, compounding, convert(N, continuous_value))
 end
 
 # Outer constructor for Continuous rates - continuous_value equals value
