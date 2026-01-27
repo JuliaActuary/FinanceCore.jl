@@ -43,6 +43,37 @@
 
     end
 
+    @testset "rate() function returns original value" begin
+        # Test rate() returns original value for Continuous
+        c = Rate(0.05, Continuous())
+        @test rate(c) == 0.05
+
+        # Test rate() returns original value for Periodic (not the internal continuous_value)
+        p = Rate(0.04, Periodic(2))
+        @test rate(p) == 0.04
+
+        # Verify rate() is correct after arithmetic
+        p2 = Periodic(0.04, 2) + 0.01
+        @test rate(p2) == 0.05
+
+        c2 = Continuous(0.03) * 2
+        @test rate(c2) == 0.06
+    end
+
+    @testset "conversion roundtrip preserves discount" begin
+        # Start with Periodic, convert to Continuous, back to Periodic
+        original = Periodic(0.05, 4)
+        continuous = convert(Continuous(), original)
+        back = convert(Periodic(4), continuous)
+        @test rate(back) ≈ rate(original) atol = 1.0e-10
+        @test discount(original, 5) ≈ discount(back, 5) atol = 1.0e-10
+
+        # Verify that converting Periodic to Continuous gives equivalent discount
+        p = Periodic(0.1, 2)
+        c = convert(Continuous(), p)
+        @test discount(p, 10) ≈ discount(c, 10) atol = 1.0e-10
+    end
+
     @testset "rate equality" begin
         a = Periodic(0.02, 2)
         a_eq = Periodic((1 + 0.02 / 2)^2 - 1, 1)
