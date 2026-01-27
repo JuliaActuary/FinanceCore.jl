@@ -88,7 +88,7 @@ struct Rate{N, T <: Frequency}
     value::N
     compounding::T
     continuous_value::N  # Precomputed equivalent continuous rate for faster discount/accumulation
-    
+
     # Inner constructor with all 3 arguments
     function Rate{N, T}(value::N, compounding::T, continuous_value::N) where {N, T <: Frequency}
         return new{N, T}(value, compounding, continuous_value)

@@ -65,13 +65,13 @@
         original = Periodic(0.05, 4)
         continuous = convert(Continuous(), original)
         back = convert(Periodic(4), continuous)
-        @test rate(back) ≈ rate(original) atol = 1e-10
-        @test discount(original, 5) ≈ discount(back, 5) atol = 1e-10
+        @test rate(back) ≈ rate(original) atol = 1.0e-10
+        @test discount(original, 5) ≈ discount(back, 5) atol = 1.0e-10
 
         # Verify that converting Periodic to Continuous gives equivalent discount
         p = Periodic(0.1, 2)
         c = convert(Continuous(), p)
-        @test discount(p, 10) ≈ discount(c, 10) atol = 1e-10
+        @test discount(p, 10) ≈ discount(c, 10) atol = 1.0e-10
     end
 
     @testset "rate equality" begin
