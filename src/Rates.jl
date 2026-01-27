@@ -87,11 +87,6 @@ Periodic(x, frequency) = Periodic(frequency).(x)
 struct Rate{N, T <: Frequency}
     continuous_value::N  # Precomputed equivalent continuous rate for faster discount/accumulation
     compounding::T
-
-    # Inner constructor with continuous_value and compounding
-    function Rate{N, T}(continuous_value::N, compounding::T) where {N, T <: Frequency}
-        return new{N, T}(continuous_value, compounding)
-    end
 end
 
 # Outer constructor for Continuous rates - continuous_value equals value
