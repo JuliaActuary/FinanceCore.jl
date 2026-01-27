@@ -1,6 +1,6 @@
 name = "FinanceCore"
 uuid = "b9b1ffdd-6612-4b69-8227-7663be06e089"
-version = "2.2.2"
+version = "2.3.0"
 authors = ["alecloudenback <alecloudenback@users.noreply.github.com> and contributors"]
 
 [deps]
