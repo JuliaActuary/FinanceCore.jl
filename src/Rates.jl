@@ -85,37 +85,20 @@ See also: [`Continuous`](@ref)
 Periodic(x, frequency) = Periodic(frequency).(x)
 
 struct Rate{N, T <: Frequency}
-    value::N
-    compounding::T
     continuous_value::N  # Precomputed equivalent continuous rate for faster discount/accumulation
-
-    # Inner constructor with all 3 arguments
-    function Rate{N, T}(value::N, compounding::T, continuous_value::N) where {N, T <: Frequency}
-        return new{N, T}(value, compounding, continuous_value)
-    end
-end
-
-# Parametric constructor for Continuous rates (2-arg form)
-function Rate{N, Continuous}(value::N, compounding::Continuous) where {N}
-    return Rate{N, Continuous}(value, compounding, value)
-end
-
-# Parametric constructor for Periodic rates (2-arg form)
-function Rate{N, Periodic}(value::N, compounding::Periodic) where {N}
-    continuous_value = compounding.frequency * log(1 + value / compounding.frequency)
-    return Rate{N, Periodic}(value, compounding, convert(N, continuous_value))
+    compounding::T
 end
 
 # Outer constructor for Continuous rates - continuous_value equals value
 function Rate(value::N, compounding::Continuous) where {N}
-    return Rate{N, Continuous}(value, compounding, value)
+    return Rate{N, Continuous}(value, compounding)
 end
 
 # Outer constructor for Periodic rates - precompute continuous equivalent
 function Rate(value::N, compounding::Periodic) where {N}
     # continuous_value = n * log(1 + r/n), which is the equivalent continuous rate
     continuous_value = compounding.frequency * log(1 + value / compounding.frequency)
-    return Rate{N, Periodic}(value, compounding, convert(N, continuous_value))
+    return Rate{N, Periodic}(convert(N, continuous_value), compounding)
 end
 
 # make rate a broadcastable type
@@ -200,16 +183,18 @@ function Base.convert(to::Continuous, r, from::Continuous)
 end
 
 function Base.convert(to::Periodic, r, from::Continuous)
-    return Rate.(to.frequency * (exp(r.value / to.frequency) - 1), to)
+    # For Continuous rates, continuous_value equals the rate value
+    return Rate.(to.frequency * (exp(r.continuous_value / to.frequency) - 1), to)
 end
 
 function Base.convert(to::Continuous, r, from::Periodic)
-    return Rate.(from.frequency * log(1 + r.value / from.frequency), to)
+    # r.continuous_value already contains the equivalent continuous rate
+    return Rate.(r.continuous_value, to)
 end
 
 function Base.convert(to::Periodic, r, from::Periodic)
-    c = convert.(Continuous(), r, from)
-    return convert.(to, c, Continuous())
+    # r.continuous_value is the equivalent continuous rate, use it to convert directly
+    return Rate.(to.frequency * (exp(r.continuous_value / to.frequency) - 1), to)
 end
 
 function Continuous(r::Rate{<:Any, <:Periodic})
@@ -238,8 +223,14 @@ julia> rate(r)
 0.03
 ```
 """
-function rate(r::Rate{<:Any, <:Frequency})
-    return r.value
+function rate(r::Rate{<:Any, Continuous})
+    return r.continuous_value
+end
+
+function rate(r::Rate{<:Any, Periodic})
+    # continuous_value = n * log(1 + r/n), so r = n * (exp(continuous_value/n) - 1)
+    n = r.compounding.frequency
+    return n * (exp(r.continuous_value / n) - 1)
 end
 
 """ 
@@ -356,17 +347,17 @@ Yields.Rate{Float64, Yields.Periodic}(0.05, Yields.Periodic(2))
 ```
 """
 function Base.:+(a::Rate{N, T}, b::Real) where {N, T <: Continuous}
-    return Continuous(a.value + b)
+    return Continuous(rate(a) + b)
 end
 function Base.:+(a::Real, b::Rate{N, T}) where {N, T <: Continuous}
-    return Continuous(b.value + a)
+    return Continuous(rate(b) + a)
 end
 
 function Base.:+(a::Rate{N, T}, b::Real) where {N, T <: Periodic}
-    return Periodic(a.value + b, a.compounding.frequency)
+    return Periodic(rate(a) + b, a.compounding.frequency)
 end
 function Base.:+(a::Real, b::Rate{N, T}) where {N, T <: Periodic}
-    return Periodic(b.value + a, b.compounding.frequency)
+    return Periodic(rate(b) + a, b.compounding.frequency)
 end
 
 function Base.:+(a::T, b::U) where {T <: Rate, U <: Rate}
@@ -396,17 +387,17 @@ Yields.Rate{Float64, Yields.Periodic}(0.03, Yields.Periodic(2))
 ```
 """
 function Base.:-(a::Rate{N, T}, b::Real) where {N, T <: Continuous}
-    return Continuous(a.value - b)
+    return Continuous(rate(a) - b)
 end
 function Base.:-(a::Real, b::Rate{N, T}) where {N, T <: Continuous}
-    return Continuous(a - b.value)
+    return Continuous(a - rate(b))
 end
 
 function Base.:-(a::Rate{N, T}, b::Real) where {N, T <: Periodic}
-    return Periodic(a.value - b, a.compounding.frequency)
+    return Periodic(rate(a) - b, a.compounding.frequency)
 end
 function Base.:-(a::Real, b::Rate{N, T}) where {N, T <: Periodic}
-    return Periodic(a - b.value, b.compounding.frequency)
+    return Periodic(a - rate(b), b.compounding.frequency)
 end
 function Base.:-(a::T, b::U) where {T <: Rate, U <: Rate}
     a_rate = rate(a)
@@ -422,17 +413,17 @@ end
 The multiplication of a Rate with a scalar will inherit the type of the `Rate`, or the first argument's type if both are `Rate`s.
 """
 function Base.:*(a::Rate{N, T}, b::Real) where {N, T <: Continuous}
-    return Continuous(a.value * b)
+    return Continuous(rate(a) * b)
 end
 function Base.:*(a::Real, b::Rate{N, T}) where {N, T <: Continuous}
-    return Continuous(a * b.value)
+    return Continuous(a * rate(b))
 end
 
 function Base.:*(a::Rate{N, T}, b::Real) where {N, T <: Periodic}
-    return Periodic(a.value * b, a.compounding.frequency)
+    return Periodic(rate(a) * b, a.compounding.frequency)
 end
 function Base.:*(a::Real, b::Rate{N, T}) where {N, T <: Periodic}
-    return Periodic(a * b.value, b.compounding.frequency)
+    return Periodic(a * rate(b), b.compounding.frequency)
 end
 
 
@@ -442,21 +433,21 @@ end
 The division of a Rate with a scalar will inherit the type of the `Rate`, or the first argument's type if both are `Rate`s.
 """
 function Base.:/(a::Rate{N, T}, b::Real) where {N, T <: Continuous}
-    return Continuous(a.value / b)
+    return Continuous(rate(a) / b)
 end
 
 # unclear if dividing a scalar by a rate should be allowed
 # function Base.:/(a::Real, b::Rate{N,T}) where {N<:Real,T<:Continuous}
-#     return Continuous( a / b.value)
+#     return Continuous( a / rate(b))
 # end
 
 function Base.:/(a::Rate{N, T}, b::Real) where {N, T <: Periodic}
-    return Periodic(a.value / b, a.compounding.frequency)
+    return Periodic(rate(a) / b, a.compounding.frequency)
 end
 
 # unclear if dividing a scalar by a rate should be allowed
 # function Base.:/(a::Real, b::Rate{N,T}) where {N<:Real, T<:Periodic}
-#     return Periodic(a / b.value, b.compounding.frequency)
+#     return Periodic(a / rate(b), b.compounding.frequency)
 # end
 
 

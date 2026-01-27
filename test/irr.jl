@@ -88,10 +88,10 @@ end
 
     cfs = fill(-10.0, 50 * 12 + 1)
     cfs[1] = 3000.0
-    @test irr(cfs, ((0 // 12):(1 // 12):50)) ≈ Rate{Float64, Periodic}(0.0323124165683919, Periodic(1))
+    @test irr(cfs, ((0 // 12):(1 // 12):50)) ≈ Periodic(0.0323124165683919, 1)
 
     cfs = Cashflow.(cfs, (0 // 12):(1 // 12):50)
-    @test irr(cfs) ≈ Rate{Float64, Periodic}(0.0323124165683919, Periodic(1))
+    @test irr(cfs) ≈ Periodic(0.0323124165683919, 1)
 
 
 end
