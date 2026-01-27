@@ -3,7 +3,7 @@ import Roots
 using Dates
 
 include("Rates.jl")
-export Rate, rate, discount, accumulation, Periodic, Continuous, forward
+export Rate, rate, compounding, discount, accumulation, Periodic, Continuous, forward
 
 
 include("Contracts.jl")

@@ -60,6 +60,27 @@
         @test rate(c2) == 0.06
     end
 
+    @testset "compounding() function returns compounding frequency" begin
+        # Test compounding() returns Continuous() for continuous rates
+        c = Rate(0.05, Continuous())
+        @test compounding(c) == Continuous()
+
+        # Test compounding() returns Periodic(n) for periodic rates
+        p = Rate(0.04, Periodic(2))
+        @test compounding(p) == Periodic(2)
+
+        # Test with different frequencies
+        p4 = Rate(0.06, Periodic(4))
+        @test compounding(p4) == Periodic(4)
+
+        # Verify compounding() is correct after arithmetic
+        p2 = Periodic(0.04, 2) + 0.01
+        @test compounding(p2) == Periodic(2)
+
+        c2 = Continuous(0.03) * 2
+        @test compounding(c2) == Continuous()
+    end
+
     @testset "conversion roundtrip preserves discount" begin
         # Start with Periodic, convert to Continuous, back to Periodic
         original = Periodic(0.05, 4)

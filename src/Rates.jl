@@ -242,6 +242,31 @@ function rate(r::Rate{<:Any, <:Frequency})
     return r.value
 end
 
+""" 
+    compounding(r::Rate)
+
+Returns the compounding frequency of the `Rate`.
+
+# Examples
+
+```julia-repl
+julia> r = Continuous(0.03)
+Rate(0.03, Continuous())
+
+julia> compounding(r)
+Continuous()
+
+julia> r = Periodic(0.05, 2)
+Rate(0.05, Periodic(2))
+
+julia> compounding(r)
+Periodic(2)
+```
+"""
+function compounding(r::Rate{<:Any, <:Frequency})
+    return r.compounding
+end
+
 function Base.isapprox(a::Rate{N, T}, b::Rate{N, T}; atol::Real = 0, rtol::Real = atol > 0 ? 0 : √eps()) where {T <: Periodic, N}
     c = convert(a.compounding, b)
     return (a.compounding.frequency == c.compounding.frequency) && isapprox(rate(a), rate(c); atol, rtol)
