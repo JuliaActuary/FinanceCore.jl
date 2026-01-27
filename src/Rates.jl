@@ -188,16 +188,18 @@ function Base.convert(to::Continuous, r, from::Continuous)
 end
 
 function Base.convert(to::Periodic, r, from::Continuous)
-    return Rate.(to.frequency * (exp(rate(r) / to.frequency) - 1), to)
+    # For Continuous rates, continuous_value equals the rate value
+    return Rate.(to.frequency * (exp(r.continuous_value / to.frequency) - 1), to)
 end
 
 function Base.convert(to::Continuous, r, from::Periodic)
-    return Rate.(from.frequency * log(1 + rate(r) / from.frequency), to)
+    # r.continuous_value already contains the equivalent continuous rate
+    return Rate.(r.continuous_value, to)
 end
 
 function Base.convert(to::Periodic, r, from::Periodic)
-    c = convert.(Continuous(), r, from)
-    return convert.(to, c, Continuous())
+    # r.continuous_value is the equivalent continuous rate, use it to convert directly
+    return Rate.(to.frequency * (exp(r.continuous_value / to.frequency) - 1), to)
 end
 
 function Continuous(r::Rate{<:Any, <:Periodic})
