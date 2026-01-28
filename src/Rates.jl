@@ -1,16 +1,18 @@
 abstract type Frequency end
 Base.Broadcast.broadcastable(x::T) where {T <: Frequency} = Ref(x)
 
-""" 
+"""
     Continuous()
 
 A type representing continuous interest compounding frequency.
+
+Use [`rate`](@ref) to retrieve the nominal rate value from a `Rate` with `Continuous` compounding.
 
 # Examples
 
 ```julia-repl
 julia> Rate(0.01,Continuous())
-Rate(0.01, Continuous())
+Continuous(0.01)
 ```
 
 See also: [`Periodic`](@ref)
@@ -18,12 +20,14 @@ See also: [`Periodic`](@ref)
 struct Continuous <: Frequency end
 
 
-""" 
+"""
+    Continuous(rate)
 
+A convenience constructor for `Rate(rate, Continuous())`. Use [`rate`](@ref) to retrieve the nominal rate value.
 
 ```julia-repl
 julia> Continuous(0.01)
-Rate(0.01, Continuous())
+Continuous(0.01)
 ```
 
 See also: [`Periodic`](@ref)
@@ -34,12 +38,14 @@ function (c::Continuous)(r)
     return convert.(c, r)
 end
 
-""" 
+"""
     Periodic(frequency)
 
-A type representing periodic interest compounding with the given frequency. 
+A type representing periodic interest compounding with the given frequency.
 
-`frequency` will be converted to an `Integer`, and will round up to 8 decimal places (otherwise will throw an `InexactError`). 
+`frequency` will be converted to an `Integer`, and will round up to 8 decimal places (otherwise will throw an `InexactError`).
+
+Use [`rate`](@ref) to retrieve the nominal rate value from a `Rate` with `Periodic` compounding.
 
 # Examples
 
@@ -47,7 +53,7 @@ Creating a semi-annual bond equivalent yield:
 
 ```julia-repl
 julia> Rate(0.01,Periodic(2))
-Rate(0.01, Periodic(2))
+Periodic(0.01, 2)
 ```
 
 See also: [`Continuous`](@ref)
@@ -66,10 +72,10 @@ function (p::Periodic)(r)
     return convert.(p, r)
 end
 
-""" 
-    Periodic(rate,frequency)
+"""
+    Periodic(rate, frequency)
 
-A convenience constructor for Rate(rate,Periodic(frequency)).
+A convenience constructor for `Rate(rate, Periodic(frequency))`. Use [`rate`](@ref) to retrieve the nominal rate value.
 
 # Examples
 
@@ -77,7 +83,7 @@ Creating a semi-annual bond equivalent yield:
 
 ```julia-repl
 julia> Periodic(0.01,2)
-Rate(0.01, Periodic(2))
+Periodic(0.01, 2)
 ```
 
 See also: [`Continuous`](@ref)
@@ -104,11 +110,23 @@ end
 # make rate a broadcastable type
 Base.Broadcast.broadcastable(ic::T) where {T <: Rate} = Ref(ic)
 
+# Pretty printing: show the user-facing rate value, not the internal continuous_value.
+# Output is a valid constructor expression, e.g. Periodic(0.06, 2) or Continuous(0.03).
+function Base.show(io::IO, r::Rate{<:Any, Periodic})
+    return print(io, "Periodic(", rate(r), ", ", r.compounding.frequency, ")")
+end
+
+function Base.show(io::IO, r::Rate{<:Any, Continuous})
+    return print(io, "Continuous(", rate(r), ")")
+end
+
 """
     Rate(rate[,frequency=1])
     Rate(rate,frequency::Frequency)
 
 Rate is a type that encapsulates an interest `rate` along with its compounding `frequency`.
+
+Internally, all rates (including `Periodic` rates) are stored as their continuously compounded equivalent for performance. This means the internal field values will differ from the nominal rate. Use [`rate`](@ref) to retrieve the nominal rate value corresponding to the compounding frequency, and [`compounding`](@ref) to retrieve the compounding frequency.
 
 Periodic rates can be constructed via `Rate(rate,frequency)` or `Rate(rate,Periodic(frequency))`. If not given a second argument, `Rate(rate)` is equivalent to `Rate(rate,Periodic(1))`.
 
@@ -118,35 +136,37 @@ Continuous rates can be constructed via `Rate(rate, Inf)` or `Rate(rate,Continuo
 
 ```julia-repl
 julia> Rate(0.01,Continuous())
-Rate(0.01, Continuous())
+Continuous(0.01)
 
 julia> Continuous(0.01)
-Rate(0.01, Continuous())
+Continuous(0.01)
 
 julia> Continuous()(0.01)
-Rate(0.01, Continuous())
+Continuous(0.01)
 
 julia> Rate(0.01,Periodic(2))
-Rate(0.01, Periodic(2))
+Periodic(0.01, 2)
 
 julia> Periodic(0.01,2)
-Rate(0.01, Periodic(2))
+Periodic(0.01, 2)
 
 julia> Periodic(2)(0.01)
-Rate(0.01, Periodic(2))
+Periodic(0.01, 2)
 
 julia> Rate(0.01)
-Rate(0.01, Periodic(1))
+Periodic(0.01, 1)
 
 julia> Rate(0.01,2)
-Rate(0.01, Periodic(2))
+Periodic(0.01, 2)
 
 julia> Rate(0.01,Periodic(4))
-Rate(0.01, Periodic(4))
+Periodic(0.01, 4)
 
 julia> Rate(0.01,Inf)
-Rate(0.01, Continuous())
+Continuous(0.01)
 
+julia> rate(Periodic(0.01,2))
+0.01
 ```
 """
 Rate(rate) = Rate(rate, Periodic(1))
@@ -208,19 +228,27 @@ function Periodic(r::Rate{<:Any, <:Frequency}, frequency::Int)
 end
 
 
-""" 
+"""
     rate(r::Rate)
 
-Returns the untyped scalar interest rate represented by the `Rate`.
+Returns the nominal (untyped scalar) interest rate represented by the `Rate`, corresponding to its compounding frequency.
+
+Since `Rate` internally stores all rates (including `Periodic`) as their continuously compounded equivalent for performance, `rate` recovers the nominal rate for the given compounding convention.
 
 # Examples
 
 ```julia-repl
-julia> r =Continuous(0.03)
-Yields.Rate{Float64, Continuous}(0.03, Continuous())
+julia> r = Continuous(0.03)
+Continuous(0.03)
 
 julia> rate(r)
 0.03
+
+julia> r = Periodic(0.06, 2)
+Periodic(0.06, 2)
+
+julia> rate(r)
+0.06
 ```
 """
 function rate(r::Rate{<:Any, Continuous})
@@ -233,7 +261,7 @@ function rate(r::Rate{<:Any, Periodic})
     return n * (exp(r.continuous_value / n) - 1)
 end
 
-""" 
+"""
     compounding(r::Rate)
 
 Returns the compounding frequency of the `Rate`.
@@ -242,13 +270,13 @@ Returns the compounding frequency of the `Rate`.
 
 ```julia-repl
 julia> r = Continuous(0.03)
-Rate(0.03, Continuous())
+Continuous(0.03)
 
 julia> compounding(r)
 Continuous()
 
 julia> r = Periodic(0.05, 2)
-Rate(0.05, Periodic(2))
+Periodic(0.05, 2)
 
 julia> compounding(r)
 Periodic(2)
