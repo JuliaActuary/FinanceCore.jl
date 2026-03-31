@@ -51,30 +51,28 @@ end
 irr_robust(cashflows) = irr_robust(cashflows, 0:(length(cashflows) - 1))
 
 function irr_robust(cashflows, times)
-    f(i) = sum(cf / (1 + i)^t for (cf, t) in zip(cashflows, times))
-    # lower bound at -.99 because otherwise we can start taking the root of a negative number
-    # when a time is fractional.
-    roots = Roots.find_zeros(f, -0.99, 2)
+    f(r) = sum(cf * exp(-r * t) for (cf, t) in zip(cashflows, times))
+    # operate in continuous rate space to avoid the singularity at i = -1
+    # in periodic space (where (1+i)^t is undefined for fractional t)
+    roots = Roots.find_zeros(f, -5.0, 3.0)
 
     # short circuit and return nothing if no roots found
     isempty(roots) && return nothing
-    # find and return the one nearest zero
+    # find the root nearest zero and convert back to periodic rate
     min_i = argmin(abs.(roots))
-    return Periodic(roots[min_i], 1)
+    return Periodic(exp(roots[min_i]) - 1, 1)
 
 end
 
 function irr_robust(cashflows::Vector{C}) where {C <: Cashflow}
-    f(i) = sum(amount(cf) / (1 + i)^timepoint(cf) for cf in cashflows)
-    # lower bound at -.99 because otherwise we can start taking the root of a negative number
-    # when a time is fractional.
-    roots = Roots.find_zeros(f, -0.99, 2)
+    f(r) = sum(amount(cf) * exp(-r * timepoint(cf)) for cf in cashflows)
+    roots = Roots.find_zeros(f, -5.0, 3.0)
 
     # short circuit and return nothing if no roots found
     isempty(roots) && return nothing
-    # find and return the one nearest zero
+    # find the root nearest zero and convert back to periodic rate
     min_i = argmin(abs.(roots))
-    return Periodic(roots[min_i], 1)
+    return Periodic(exp(roots[min_i]) - 1, 1)
 
 end
 
