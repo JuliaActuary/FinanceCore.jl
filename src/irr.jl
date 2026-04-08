@@ -51,7 +51,12 @@ end
 irr_robust(cashflows) = irr_robust(cashflows, 0:(length(cashflows) - 1))
 
 function irr_robust(cashflows, times)
-    f(r) = sum(cf * exp(-r * t) for (cf, t) in zip(cashflows, times))
+    # IRR is scale-invariant; normalizing keeps f(r) in O(1) range
+    # so that find_zeros can reliably distinguish roots from noise.
+    M = maximum(abs, cashflows)
+    iszero(M) && return nothing
+    normalized = cashflows ./ M
+    f(r) = sum(cf * exp(-r * t) for (cf, t) in zip(normalized, times))
     # operate in continuous rate space to avoid the singularity at i = -1
     # in periodic space (where (1+i)^t is undefined for fractional t)
     roots = Roots.find_zeros(f, -5.0, 3.0)
@@ -65,7 +70,9 @@ function irr_robust(cashflows, times)
 end
 
 function irr_robust(cashflows::Vector{C}) where {C <: Cashflow}
-    f(r) = sum(amount(cf) * exp(-r * timepoint(cf)) for cf in cashflows)
+    M = maximum(cf -> abs(amount(cf)), cashflows)
+    iszero(M) && return nothing
+    f(r) = sum(amount(cf) / M * exp(-r * timepoint(cf)) for cf in cashflows)
     roots = Roots.find_zeros(f, -5.0, 3.0)
 
     # short circuit and return nothing if no roots found
