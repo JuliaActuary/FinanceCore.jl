@@ -34,8 +34,8 @@ p(rate) = Periodic(rate, 1)
     # all-zero or near-zero cashflows should return nothing, not throw
     @test isnothing(irr([0.0, 0.0, 0.0]))
     @test isnothing(irr([0.0, 0.0, 0.0], 0:2))
-    @test isnothing(irr([1e-50, 1e-50, 1e-50]))
-    @test isnothing(irr([1e-300, 1e-300, 1e-300], 0:2))
+    @test isnothing(irr([1.0e-50, 1.0e-50, 1.0e-50]))
+    @test isnothing(irr([1.0e-300, 1.0e-300, 1.0e-300], 0:2))
 
 end
 
