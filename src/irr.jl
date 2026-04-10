@@ -1,7 +1,7 @@
 """
-    internal_rate_of_return(cashflows::AbstractVector)::Rate
-    internal_rate_of_return(cashflows::AbstractVector, timepoints)::Rate
-    internal_rate_of_return(cashflows::Vector{<:Cashflow})::Rate
+    internal_rate_of_return(cashflows::AbstractVector)::Union{Periodic, Nothing}
+    internal_rate_of_return(cashflows::AbstractVector, timepoints)::Union{Periodic, Nothing}
+    internal_rate_of_return(cashflows::Vector{<:Cashflow})::Union{Periodic, Nothing}
 
 Calculate the internal rate of return with given timepoints. If no timepoints given, assumes equally spaced cashflows starting at time zero (0, 1, 2, ..., n).
 
@@ -55,6 +55,7 @@ function irr_robust(cashflows, times)
     # so that find_zeros can reliably distinguish roots from noise.
     M = maximum(abs, cashflows)
     iszero(M) && return nothing
+    isfinite(M) || return nothing
     normalized = cashflows ./ M
     f(r) = sum(cf * exp(-r * t) for (cf, t) in zip(normalized, times))
     # operate in continuous rate space to avoid the singularity at i = -1
@@ -65,7 +66,7 @@ function irr_robust(cashflows, times)
     isempty(roots) && return nothing
     # find the root nearest zero and convert back to periodic rate
     min_i = argmin(abs.(roots))
-    return Periodic(exp(roots[min_i]) - 1, 1)
+    return Periodic(Continuous(roots[min_i]), 1)
 
 end
 
@@ -85,7 +86,9 @@ end
 
 
 function irr_newton(cashflows, times)
-    @assert length(cashflows) <= length(times)
+    if length(cashflows) > length(times)
+        throw(ArgumentError("more cashflows ($(length(cashflows))) than timepoints ($(length(times)))"))
+    end
     # use newton's method with hand-coded derivative
     r = __newtons_method1D_irr(
         cashflows,
@@ -94,7 +97,7 @@ function irr_newton(cashflows, times)
         1.0e-9,
         100
     )
-    return Periodic(exp(r) - 1, 1)
+    return Periodic(Continuous(r), 1)
 
 end
 
