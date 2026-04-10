@@ -66,13 +66,14 @@ function irr_robust(cashflows, times)
     isempty(roots) && return nothing
     # find the root nearest zero and convert back to periodic rate
     min_i = argmin(abs.(roots))
-    return Periodic(Continuous(roots[min_i]), 1)
+    return Periodic(exp(roots[min_i]) - 1, 1)
 
 end
 
 function irr_robust(cashflows::Vector{C}) where {C <: Cashflow}
     M = maximum(cf -> abs(amount(cf)), cashflows)
     iszero(M) && return nothing
+    isfinite(M) || return nothing
     f(r) = sum(amount(cf) / M * exp(-r * timepoint(cf)) for cf in cashflows)
     roots = Roots.find_zeros(f, -5.0, 3.0)
 
@@ -97,7 +98,7 @@ function irr_newton(cashflows, times)
         1.0e-9,
         100
     )
-    return Periodic(Continuous(r), 1)
+    return Periodic(exp(r) - 1, 1)
 
 end
 
