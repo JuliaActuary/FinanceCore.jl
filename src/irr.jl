@@ -49,7 +49,7 @@ function irr_robust(cashflows, times)
     M = maximum(abs, cashflows)
     iszero(M) && return nothing
     normalized = cashflows ./ M
-    f(r) = present_value(Continuous(r), normalized, times)
+    f(r) = sum(cf * exp(-r * t) for (cf, t) in zip(normalized, times))
     # operate in continuous rate space to avoid the singularity at i = -1
     # in periodic space (where (1+i)^t is undefined for fractional t)
     roots = Roots.find_zeros(f, -5.0, 3.0)
@@ -58,7 +58,7 @@ function irr_robust(cashflows, times)
     isempty(roots) && return nothing
     # find the root nearest zero and convert back to periodic rate
     min_i = argmin(abs.(roots))
-    return Periodic(Continuous(roots[min_i]), 1)
+    return Periodic(exp(roots[min_i]) - 1, 1)
 
 end
 
@@ -73,7 +73,7 @@ function irr_newton(cashflows, times)
         1.0e-9,
         100
     )
-    return Periodic(Continuous(r), 1)
+    return Periodic(exp(r) - 1, 1)
 
 end
 
