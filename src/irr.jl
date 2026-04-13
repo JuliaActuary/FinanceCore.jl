@@ -23,6 +23,7 @@ function internal_rate_of_return(cashflows::AbstractVector{<:Real})
 end
 
 function internal_rate_of_return(cashflows::Vector{C}) where {C <: Cashflow}
+    isempty(cashflows) && return nothing
     # first try to quickly solve with newton's method, otherwise
     # revert to a more robust method
 
@@ -36,6 +37,7 @@ function internal_rate_of_return(cashflows::Vector{C}) where {C <: Cashflow}
 end
 
 function internal_rate_of_return(cashflows, times)
+    isempty(cashflows) && return nothing
     # first try to quickly solve with newton's method, otherwise
     # revert to a more robust method
 
