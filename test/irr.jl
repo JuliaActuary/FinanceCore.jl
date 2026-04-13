@@ -101,3 +101,20 @@ end
 
 
 end
+
+@testset "irr edge cases" begin
+    # NaN/Inf inputs should return nothing, not throw
+    @test isnothing(irr([NaN, 1.0]))
+    @test isnothing(irr([Inf, -100.0]))
+    @test isnothing(irr([-Inf, 100.0]))
+
+    # Same for Cashflow path
+    @test isnothing(irr(Cashflow.([NaN, 1.0], [0, 1])))
+    @test isnothing(irr(Cashflow.([Inf, -100.0], [0, 1])))
+
+    # Mismatched lengths should throw ArgumentError, not AssertionError
+    @test_throws ArgumentError irr([1, 2, 3], [0, 1])
+
+    # Empty vector
+    @test isnothing(irr(Float64[]))
+end
