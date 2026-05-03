@@ -8,8 +8,9 @@ include("Rates.jl")
 include("irr.jl")
 include("present_value.jl")
 include("contracts.jl")
+include("Deflator.jl")
 
 using Aqua
 @testset "Aqua.jl" begin
-    Aqua.test_all(FinanceCore; ambiguities = false)
+    Aqua.test_all(FinanceCore)
 end

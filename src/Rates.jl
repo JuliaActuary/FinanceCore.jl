@@ -90,7 +90,7 @@ See also: [`Continuous`](@ref)
 """
 Periodic(x, frequency) = Periodic(frequency).(x)
 
-struct Rate{N, T <: Frequency}
+struct Rate{N, T <: Frequency} <: AbstractDeflator
     continuous_value::N  # Precomputed equivalent continuous rate for faster discount/accumulation
     compounding::T
 end
@@ -356,6 +356,26 @@ accumulation(rate, from, to) = accumulation(rate, to - from)
 Base.zero(rate::T, t) where {T <: Rate} = rate
 forward(rate::T, to) where {T <: Rate} = rate
 forward(rate::T, from, to) where {T <: Rate} = rate
+
+# AbstractDeflator interface for Rate.
+#
+# Bodies are duplicated from `discount(::Rate, t)` rather than redirecting
+# through `factor` to preserve the zero-allocation `pv`-on-`Cashflow` hot path
+# at `pv.jl:33`, where `present_value(r::Rate, x::Cashflow)` calls
+# `discount(r, x.time)` per cashflow. The IRR Newton/robust paths use raw
+# `exp(-r * t)` inline (`irr.jl`) and do NOT dispatch through `discount`, so
+# they are unaffected by changes here.
+#
+# Historical context: commit 87fb3f4 measured a ~38% regression on the
+# Cashflow path when `Periodic(exp(r) - 1, 1)` was replaced with
+# `Periodic(Continuous(r), 1)` — a rate-type-conversion regression in IRR's
+# result construction. The hot-loop allocation behavior of rate operations
+# is empirically fragile; do not refactor `factor`/`discount` on `Rate`
+# without an allocation regression check (the test suite locks
+# `@allocations factor(::Rate, t) == 0` and the same for `discount`/`pv`).
+factor(rate::Rate, t)        = exp(-rate.continuous_value * t)
+factor(rate::Rate, from, to) = exp(-rate.continuous_value * (to - from))
+intensity(rate::Rate, t)     = rate.continuous_value
 
 """
     +(Yields.Rate, T<:Real)
