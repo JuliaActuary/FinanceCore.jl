@@ -90,7 +90,7 @@ See also: [`Continuous`](@ref)
 """
 Periodic(x, frequency) = Periodic(frequency).(x)
 
-struct Rate{N, T <: Frequency}
+struct Rate{N, T <: Frequency} <: AbstractDeflator
     continuous_value::N  # Precomputed equivalent continuous rate for faster discount/accumulation
     compounding::T
 end
@@ -356,6 +356,17 @@ accumulation(rate, from, to) = accumulation(rate, to - from)
 Base.zero(rate::T, t) where {T <: Rate} = rate
 forward(rate::T, to) where {T <: Rate} = rate
 forward(rate::T, from, to) where {T <: Rate} = rate
+
+# AbstractDeflator interface for Rate.
+#
+# Bodies are duplicated from `discount(::Rate, t)` and `accumulation(::Rate, t)`
+# above rather than redirecting through `factor` to preserve the zero-allocation
+# hot path exercised by `irr` and `pv`. The IRR regression history (#36, #37)
+# showed that even a single layer of nesting cost 30-38% on hot paths. Do not
+# refactor without re-running the IRR benchmark suite.
+factor(rate::Rate, t)        = exp(-rate.continuous_value * t)
+factor(rate::Rate, from, to) = exp(-rate.continuous_value * (to - from))
+intensity(rate::Rate, t)     = rate.continuous_value
 
 """
     +(Yields.Rate, T<:Real)
