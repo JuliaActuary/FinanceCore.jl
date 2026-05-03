@@ -27,6 +27,20 @@ a yield curve, this is the implied forward rate between the two dates.
 
 Generic via `factor`, so any `AbstractDeflator` that implements the required
 two-argument `factor(p, from, to)` gets a working `forward`.
+
+# Examples
+
+```julia-repl
+julia> r = Continuous(0.03);
+
+julia> forward(r, 1, 6)              # constant-force Rate: returns the rate itself
+Continuous(0.03)
+
+julia> c = compose(Continuous(0.03), Continuous(0.012));
+
+julia> forward(c, 1, 6)              # composite: sum of component forces
+Continuous(0.042)
+```
 """
 forward(p::AbstractDeflator, from, to) = Continuous(-log(factor(p, from, to)) / (to - from))
 
@@ -48,6 +62,20 @@ Only meaningful for subtypes that define the single-argument `factor(p, t)`
 (origin-invariant subtypes). Mortality/lapse/default tables indexed by
 absolute age don't define single-arg `factor`, so `zero(table, t)` raises
 `MethodError` cleanly.
+
+# Examples
+
+```julia-repl
+julia> r = Continuous(0.03);
+
+julia> zero(r, 5)                    # constant-force Rate: returns the rate itself
+Continuous(0.03)
+
+julia> c = compose(Continuous(0.03), Continuous(0.012));
+
+julia> zero(c, 5)                    # composite spot rate: sum of component forces
+Continuous(0.042)
+```
 """
 Base.zero(p::AbstractDeflator, t) = Continuous(-log(factor(p, t)) / t)
 
@@ -70,6 +98,22 @@ constructed via [`dynamic_composite`](@ref).
 
 Composition assumes **independence**: see [`AbstractDeflator`](@ref) for
 correlated alternatives.
+
+!!! warning "Single-arg `factor(c, t)` requires axis agreement"
+    The single-argument form `factor(c::CompositeDeflator, t)` returns
+    `prod(factor(comp, t) for comp in components)`. This is only meaningful
+    when **every component agrees on what `t = 0` means**. Mixing a
+    years-from-valuation component (origin-invariant `Rate`, pre-sliced
+    yield curve) with an absolute-axis component (age-indexed mortality
+    table, calendar-dated curve) silently produces wrong numbers — each
+    component answers "factor over `[0, t]`" using its own origin.
+
+    The fix is the same as the forward-vs-spot footgun in
+    [`AbstractDeflator`](@ref): pre-slice age/calendar-indexed components
+    so they share a years-from-valuation axis with the rest of the
+    composite. When in doubt, use the two-argument form `factor(c, from, to)`
+    with explicit endpoints — it is unambiguous regardless of component
+    conventions.
 """
 struct CompositeDeflator{T <: Tuple} <: AbstractDeflator
     components::T
@@ -174,6 +218,11 @@ end
 
 # Flatten any CompositeDeflators in the args. Recursive single-pass; tuple
 # operations are statically resolvable so this stays type-stable.
+#
+# The splat-recursion is type-stable for small N (~16 components, comfortably
+# above the realistic actuarial 4-decrement ceiling). Composites built from
+# vastly larger numbers of components should use `dynamic_composite` to avoid
+# specialization blow-up.
 _flatten(args::Tuple) = _flatten_impl((), args...)
 _flatten_impl(acc::Tuple) = acc
 _flatten_impl(acc::Tuple, c::CompositeDeflator, rest...) =
@@ -189,10 +238,18 @@ composite shape varies at runtime (e.g. Monte Carlo scenarios where each path
 contributes a different number of components) and the compile-time dispatch
 of [`compose`](@ref) would cause excessive specialization.
 
-`factor` is computed via `mapreduce` over the vector. Empty vectors raise
-from `mapreduce`.
+`factor` is computed via `mapreduce` over the vector with no `init` value, so
+the fold uses the first element's type — preserving autodiff duals and
+`BigFloat` element types. Iteration order matters for reproducibility (and
+for the type-seeding behavior); pass a deterministically-ordered vector.
+
+Empty vectors raise `ArgumentError` (matching the empty-args behavior of
+[`compose`](@ref)).
 """
-dynamic_composite(v::AbstractVector{<:AbstractDeflator}) = DynamicCompositeDeflator(v)
+function dynamic_composite(v::AbstractVector{<:AbstractDeflator})
+    isempty(v) && throw(ArgumentError("dynamic_composite requires at least one AbstractDeflator"))
+    return DynamicCompositeDeflator(v)
+end
 
 # ─── Display and broadcasting ─────────────────────────────────────────────────
 

@@ -38,8 +38,20 @@ independence assumption visible.
 
 Recovery-of-market-value parameterized by ELGD (the dominant modern convention
 in reduced-form credit modeling) fits natively: bake `ELGD * λ` into the
-default process, then `compose(yield, default_with_lgd)`. Recovery-at-maturity
-is a one-line caller recipe (`R*pv(yield) + (1-R)*pv(yield * default)`).
+default process, then `compose(yield, default_with_lgd)`. The existing
+`Rate * Real` operator scales the underlying force, so the loss-adjusted
+hazard is one line:
+
+```julia
+yield      = Continuous(0.03)
+λ_marginal = Continuous(0.012)            # marginal default force
+ELGD       = 0.60                         # 60% loss given default
+λ_loss_adj = λ_marginal * ELGD            # Continuous(0.0072) — Rate * Real
+defaultable_pv = pv(compose(yield, λ_loss_adj), cashflows)
+```
+
+Recovery-at-maturity is a one-line caller recipe
+(`R*pv(yield) + (1-R)*pv(compose(yield, default))`).
 Recovery-of-face-at-default requires `intensity` plus a quadrature integral
 over the default-time density and lives in a downstream credit package.
 
