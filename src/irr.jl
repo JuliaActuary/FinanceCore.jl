@@ -16,7 +16,7 @@ Periodic(0.1, 1)
 ```
 
 # Solver notes
-First tries Newton's method (fast). If Newton does not converge, falls back to a robust root-finding search in continuous rate space over [-5, 3] (approximately [-0.993, 19.1] in periodic rate). When the fallback finds multiple roots, returns the one nearest zero.
+First tries Newton's method (fast). If Newton does not converge, falls back to a robust root-finding search in continuous rate space over `[-5, 3]` (approximately `[-0.993, 19.1]` in periodic rate). When the fallback finds multiple roots, returns the one nearest zero.
 """
 function internal_rate_of_return(cashflows::AbstractVector{<:Real})
     return internal_rate_of_return(cashflows, 0:(length(cashflows) - 1))
