@@ -166,7 +166,7 @@ end
 
     An alias for `internal_rate_of_return`.
 """
-irr = internal_rate_of_return
+const irr = internal_rate_of_return
 
 # modified from
 # Algorithms for Optimization, Mykel J. Kochenderfer and Tim A. Wheeler, pg 88
