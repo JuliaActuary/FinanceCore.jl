@@ -3,16 +3,19 @@
     internal_rate_of_return(cashflows::AbstractVector, timepoints)::Rate
     internal_rate_of_return(cashflows::Vector{<:Cashflow})::Rate
 
-Calculate the internal rate of return with given timepoints. If no timepoints given, assumes equally spaced cashflows starting at time zero (0, 1, 2, ..., n).
+Calculate the internal rate of return with given timepoints. If no timepoints given, assumes equally spaced cashflows starting at time zero (`0, 1, 2, ..., n-1`). Note this differs from [`present_value`](@ref), whose default timepoints are the vector's indices (`1, 2, ..., n`).
 
-Returns a `Periodic(rate, 1)` `Rate`, or `nothing` if no root is found. Get the scalar rate by calling `rate()` on the result.
+Returns a `Periodic(rate, 1)` `Rate`. When no root can be found (e.g. degenerate or all-zero cashflows), returns `Periodic(NaN, 1)`; check with `isnan(rate(result))`. Get the scalar rate by calling `rate()` on the result.
+
+!!! note "Changed in v3.0.0"
+    Prior to v3, `nothing` was returned when no root was found. Replace `isnothing(irr(cfs))` checks with `isnan(rate(irr(cfs)))`.
 
 # Example
 ```julia-repl
 julia> internal_rate_of_return([-100,110],[0,1]) # e.g. cashflows at time 0 and 1
-Periodic(0.1, 1)
+Periodic(0.09999999999999987, 1)
 julia> internal_rate_of_return([-100,110]) # implied the same as above
-Periodic(0.1, 1)
+Periodic(0.09999999999999987, 1)
 ```
 
 # Solver notes
@@ -54,15 +57,14 @@ function irr_robust(cashflows, times)
     # IRR is scale-invariant; normalizing keeps f(r) in O(1) range
     # so that find_zeros can reliably distinguish roots from noise.
     M = maximum(abs, cashflows)
-    iszero(M) && return nothing
+    iszero(M) && return Periodic(NaN, 1)
     normalized = cashflows ./ M
     f(r) = sum(cf * exp(-r * t) for (cf, t) in zip(normalized, times))
     # operate in continuous rate space to avoid the singularity at i = -1
     # in periodic space (where (1+i)^t is undefined for fractional t)
     roots = Roots.find_zeros(f, -5.0, 3.0)
 
-    # short circuit and return nothing if no roots found
-    isempty(roots) && return nothing
+    isempty(roots) && return Periodic(NaN, 1)
     # find the root nearest zero and convert back to periodic rate
     min_i = argmin(abs.(roots))
     return Periodic(exp(roots[min_i]) - 1, 1)
@@ -71,12 +73,11 @@ end
 
 function irr_robust(cashflows::Vector{C}) where {C <: Cashflow}
     M = maximum(cf -> abs(amount(cf)), cashflows)
-    iszero(M) && return nothing
+    iszero(M) && return Periodic(NaN, 1)
     f(r) = sum(amount(cf) / M * exp(-r * timepoint(cf)) for cf in cashflows)
     roots = Roots.find_zeros(f, -5.0, 3.0)
 
-    # short circuit and return nothing if no roots found
-    isempty(roots) && return nothing
+    isempty(roots) && return Periodic(NaN, 1)
     # find the root nearest zero and convert back to periodic rate
     min_i = argmin(abs.(roots))
     return Periodic(exp(roots[min_i]) - 1, 1)
@@ -115,16 +116,13 @@ abstract type VectorizationBackend end
 struct SimdBackend <: VectorizationBackend end
 struct TurboBackend <: VectorizationBackend end
 
-# Global backend setting - extensions can change this
-const VECTORIZATION_BACKEND = Ref{VectorizationBackend}(SimdBackend())
+# Typed as a small Union so reads union-split rather than dispatching dynamically
+# on the abstract supertype. Extensions mutate the Ref in their __init__.
+const VECTORIZATION_BACKEND = Ref{Union{SimdBackend, TurboBackend}}(SimdBackend())
 
 # an internal function which calculates the
 # present value and it's derivative in one pass
 # for use in newton's method
-#
-# Dispatches to the appropriate backend. When LoopVectorization
-# is loaded, the extension sets VECTORIZATION_BACKEND to TurboBackend()
-# and provides a faster @turbo-based implementation.
 function __pv_div_pv′(r, cashflows, times)
     return __pv_div_pv′(VECTORIZATION_BACKEND[], r, cashflows, times)
 end
@@ -171,11 +169,12 @@ const irr = internal_rate_of_return
 # modified from
 # Algorithms for Optimization, Mykel J. Kochenderfer and Tim A. Wheeler, pg 88
 function __newtons_method1D_irr(cashflows, times, x, ε, k_max)
+    # read the backend Ref once per solve rather than once per iteration
+    backend = VECTORIZATION_BACKEND[]
     k = 1
     Δ = Inf
     while abs(Δ) > ε && k ≤ k_max
-        # @show x,H(x),  ∇f(x)
-        Δ = __pv_div_pv′(x, cashflows, times)
+        Δ = __pv_div_pv′(backend, x, cashflows, times)
         x -= Δ
         k += 1
     end
@@ -183,11 +182,11 @@ function __newtons_method1D_irr(cashflows, times, x, ε, k_max)
 end
 
 function __newtons_method1D_irr(cashflows::Vector{C}, x, ε, k_max) where {C <: Cashflow}
+    backend = VECTORIZATION_BACKEND[]
     k = 1
     Δ = Inf
     while abs(Δ) > ε && k ≤ k_max
-        # @show x,H(x),  ∇f(x)
-        Δ = __pv_div_pv′(x, cashflows)
+        Δ = __pv_div_pv′(backend, x, cashflows)
         x -= Δ
         k += 1
     end

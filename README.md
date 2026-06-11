@@ -13,16 +13,13 @@ If you are extending a function or type as a user or developer, then it would be
 
 ## FinanceCore contents
 
-### Reexported by ActuaryUtilities.jl
-- `irr` and `internal_rate_of_return` (reexported by ActuaryUtilities)
-
-### Reexported by FinanceModels.jl
-- `Rate`s and `Frequency`s
+- `Rate`s and `Frequency`s (`Periodic`, `Continuous`)
 - `discount`, `accumulation`, and `forward` functions
+- `Cashflow`, `Quote`, and `Composite` contracts with the `amount`/`timepoint`/`maturity` accessors
+- `irr`/`internal_rate_of_return` and `pv`/`present_value`
 
-### Used by multiple packages
-- `cashflows` and `timepoints` functions
+FinanceCore exports these names, and downstream packages (FinanceModels.jl via `@reexport`, ActuaryUtilities.jl selectively) re-export them — so `using FinanceModels` or `using ActuaryUtilities` brings the FinanceCore API into scope without loading FinanceCore directly.
 
-# TODO
-- What's the best pattern for exports? Should this package export anything and have dependent packages @reexport? Does that make it so users would still see `Yields.Rate`?
-- Should this package precompile anything, or let the downstream packages do that? Or do it here unless the downstream extend the types and/or methods?
+## Upgrading to v3
+
+`internal_rate_of_return`/`irr` now return `Periodic(NaN, 1)` instead of `nothing` when no root is found, so the return type is always a `Rate`. Replace `isnothing(irr(cfs))` checks with `isnan(rate(irr(cfs)))`.

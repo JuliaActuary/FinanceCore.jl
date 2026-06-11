@@ -26,16 +26,16 @@ p(rate) = Periodic(rate, 1)
 
 
     @test irr([-100, 100]) ≈ p(0.0)
-    @test isnothing(irr([100, 100])) # answer is -1, but search range won't find it
+    @test isnan(rate(irr([100, 100]))) # answer is -1, but search range won't find it
 
     # test the unsolvable
-    @test isnothing(irr([-1.0e8, 0.0, 0.0, 0.0], 0:3))
+    @test isnan(rate(irr([-1.0e8, 0.0, 0.0, 0.0], 0:3)))
 
-    # all-zero or near-zero cashflows should return nothing, not throw
-    @test isnothing(irr([0.0, 0.0, 0.0]))
-    @test isnothing(irr([0.0, 0.0, 0.0], 0:2))
-    @test isnothing(irr([1.0e-50, 1.0e-50, 1.0e-50]))
-    @test isnothing(irr([1.0e-300, 1.0e-300, 1.0e-300], 0:2))
+    # all-zero or near-zero cashflows should return NaN rate, not throw
+    @test isnan(rate(irr([0.0, 0.0, 0.0])))
+    @test isnan(rate(irr([0.0, 0.0, 0.0], 0:2)))
+    @test isnan(rate(irr([1.0e-50, 1.0e-50, 1.0e-50])))
+    @test isnan(rate(irr([1.0e-300, 1.0e-300, 1.0e-300], 0:2)))
 
 end
 
