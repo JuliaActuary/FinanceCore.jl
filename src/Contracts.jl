@@ -38,12 +38,12 @@ Base.isapprox(a::Quote, b::Quote) = isapprox(a.price, b.price) && isapprox(a.ins
 """
     Cashflow(amount,time)
 
-A `Cahflow{A,B}` is a contract that pays an `amount` at `time`. 
+A `Cashflow{A,B}` is a contract that pays an `amount` at `time`.
 
 Cashflows can be:
 
 - negated with the unary `-` operator. 
-- added/subtracted together but note that the `time` must be `isapprox` equal.
+- added/subtracted together but note that the `time` must be `isapprox` equal (default `isapprox` tolerance, i.e. relative to the magnitude of the times).
 - multiplied/divided by a scalar.
 
 Supertype Hierarchy
@@ -63,7 +63,7 @@ Base.zero(c::C) where {C <: Cashflow} = Cashflow(zero(c.amount), c.time)
 """
     amount(x)
 
-If is an object with an amount component (e.g. a `Cashflow`), will retrun that amount component, otherwise just `x`.
+If `x` is an object with an amount component (e.g. a `Cashflow`), will return that amount component, otherwise just `x`.
 
 # Examples
 
@@ -100,13 +100,17 @@ timepoint(x::R, t) where {R <: Real} = t
 
 # Base.convert(::Type{Cashflow{A,B}}, y::Cashflow{C,D}) where {A,B,C,D} = Cashflow(A(y.amount), B(y.time))
 
+# `isapprox` has no methods for `Dates.Date`, so Date timepoints compare exactly
+__time_isapprox(a, b; kwargs...) = isapprox(a, b; kwargs...)
+__time_isapprox(a::Dates.Date, b::Dates.Date; kwargs...) = a == b
+
 function Base.isapprox(a::C, b::D; atol::Real = 0, rtol::Real = atol > 0 ? 0 : √eps()) where {C <: Cashflow, D <: Cashflow}
     amt = isapprox(amount(a), amount(b); atol, rtol)
-    return amt && isapprox(timepoint(a), timepoint(b); atol, rtol)
+    return amt && __time_isapprox(timepoint(a), timepoint(b); atol, rtol)
 end
 
 function Base.:+(c1::C, c2::D) where {C <: Cashflow, D <: Cashflow}
-    return if timepoint(c1) ≈ timepoint(c2)
+    return if __time_isapprox(timepoint(c1), timepoint(c2))
         Cashflow(amount(c1) + amount(c2), timepoint(c1))
     else
         throw(ArgumentError("Cashflow timepoints must be the same. Got $(timepoint(c1)) and $(timepoint(c2))."))
@@ -114,7 +118,7 @@ function Base.:+(c1::C, c2::D) where {C <: Cashflow, D <: Cashflow}
 end
 
 function Base.:-(c1::C, c2::D) where {C <: Cashflow, D <: Cashflow}
-    return if timepoint(c1) ≈ timepoint(c2)
+    return if __time_isapprox(timepoint(c1), timepoint(c2))
         Cashflow(amount(c1) - amount(c2), timepoint(c1))
     else
         throw(ArgumentError("Cashflow timepoints must be the same. Got $(timepoint(c1)) and $(timepoint(c2))."))

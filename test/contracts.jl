@@ -34,9 +34,23 @@
     end
 
     @testset "Composite" begin
-        #TODO
-        cp = Composite(cf11, cf11)
-        @test maturity(cp) == 1
+        cp = Composite(cf11, Cashflow(2, 3))
+        @test maturity(cp) == 3
+        @test maturity(Composite(cp, Cashflow(1, 5))) == 5
+        @test cp.a == cf11
+        @test cp.b == Cashflow(2, 3)
+    end
+
+    @testset "Date-typed Cashflow" begin
+        d = Date(2026, 6, 30)
+        cf = Cashflow(100.0, d)
+        @test amount(cf) == 100.0
+        @test timepoint(cf) == d
+        @test maturity(cf) == d
+        @test -cf == Cashflow(-100.0, d)
+        @test cf * 2 == Cashflow(200.0, d)
+        @test cf + Cashflow(50.0, d) == Cashflow(150.0, d)
+        @test_throws ArgumentError cf + Cashflow(1.0, Date(2027, 6, 30))
     end
 
 end
