@@ -113,6 +113,29 @@
 
     end
 
+    @testset "mixed numeric type isapprox" begin
+        # mixed numeric types previously recursed to a StackOverflowError
+        @test Periodic(0.5f0, 2) ≈ Periodic(0.5, 2)
+        @test Periodic(0.5, 2) ≈ Periodic(0.5f0, 2)
+        @test Continuous(0.25f0) ≈ Continuous(0.25)
+        @test Continuous(big"0.03") ≈ Continuous(0.03)
+        @test Periodic(big"0.05", 2) ≈ Periodic(0.05, 2)
+        # mixed numeric type and mixed compounding together
+        @test convert(Continuous(), Periodic(0.5, 2)) ≈ Periodic(0.5f0, 2)
+        @test Periodic(0.5f0, 2) ≈ convert(Continuous(), Periodic(0.5, 2))
+        # still distinguishes genuinely different rates
+        @test !(Periodic(0.05f0, 2) ≈ Periodic(0.06, 2))
+        @test !(Continuous(0.03f0) ≈ Continuous(0.04))
+    end
+
+    @testset "Periodic frequency validation" begin
+        # frequency 0 used to silently produce NaN rates (0 * log(Inf))
+        @test_throws ArgumentError Periodic(0)
+        @test_throws ArgumentError Periodic(-2)
+        @test_throws ArgumentError Periodic(0.05, 0)
+        @test_throws ArgumentError Periodic(0.05, -1)
+    end
+
     @testset "discounting and accumulation" for t in [-1.3, 2.46, 6.7]
 
         unspecified_rate = 0.035
