@@ -60,6 +60,12 @@ See also: [`Continuous`](@ref)
 """
 struct Periodic <: Frequency
     frequency::Int
+    function Periodic(frequency::Int)
+        # frequency 0 would silently produce NaN rates (0 * log(Inf)); negative
+        # frequencies invert the compounding math without meaning
+        frequency > 0 || throw(ArgumentError("Periodic compounding frequency must be a positive integer, got $frequency"))
+        return new(frequency)
+    end
 end
 
 function Periodic(frequency::T) where {T <: AbstractFloat}
@@ -180,14 +186,14 @@ Returns a `Rate` with an equivalent discount but represented with a different co
 # Examples
 
 ```julia-repl
-julia> r = Rate(Periodic(12),0.01)
-Rate(0.01, Periodic(12))
+julia> r = Rate(0.01, Periodic(12))
+Periodic(0.009999999999998899, 12)
 
-julia> convert(Periodic(1),r)
-Rate(0.010045960887181016, Periodic(1))
+julia> convert(Periodic(1), r)
+Periodic(0.010045960887181016, 1)
 
-julia> convert(Continuous(),r)
-Rate(0.009995835646701251, Continuous())
+julia> convert(Continuous(), r)
+Continuous(0.009995835646701251)
 ```
 """
 function Base.convert(cf::T, r::Rate{<:Any, <:Frequency}) where {T <: Frequency}
@@ -286,18 +292,26 @@ function compounding(r::Rate{<:Any, <:Frequency})
     return r.compounding
 end
 
-function Base.isapprox(a::Rate{N, T}, b::Rate{N, T}; atol::Real = 0, rtol::Real = atol > 0 ? 0 : √eps()) where {T <: Periodic, N}
-    c = convert(a.compounding, b)
-    return (a.compounding.frequency == c.compounding.frequency) && isapprox(rate(a), rate(c); atol, rtol)
+# Note: separate methods for each Periodic/Continuous combination, with independent
+# numeric parameters N1/N2, for the same invalidation reasons as `<`/`>` below.
+# A `T <: Rate` fallback that recursed after converting compounding could never
+# align differing numeric types (e.g. Float32 vs Float64, or Dual vs Float64)
+# and would overflow the stack. Tolerance kwargs are forwarded to the scalar
+# `isapprox` so that Base's `rtoldefault` can account for mixed precisions.
+function Base.isapprox(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}; kwargs...) where {N1, N2}
+    return isapprox(rate(a), rate(convert(a.compounding, b)); kwargs...)
 end
 
-function Base.isapprox(a::Rate{N, T}, b::Rate{N, T}; atol::Real = 0, rtol::Real = atol > 0 ? 0 : √eps()) where {T <: Continuous, N}
-    return isapprox(rate(a), rate(b); atol, rtol)
+function Base.isapprox(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}; kwargs...) where {N1, N2}
+    return isapprox(rate(a), rate(b); kwargs...)
 end
 
-# the fallback for rates not of the same type
-function Base.isapprox(a::T, b::N; atol::Real = 0, rtol::Real = atol > 0 ? 0 : √eps()) where {T <: Rate, N <: Rate}
-    return isapprox(convert(b.compounding, a), b; atol, rtol)
+function Base.isapprox(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}; kwargs...) where {N1, N2}
+    return isapprox(rate(a), rate(convert(a.compounding, b)); kwargs...)
+end
+
+function Base.isapprox(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}; kwargs...) where {N1, N2}
+    return isapprox(rate(a), rate(convert(a.compounding, b)); kwargs...)
 end
 
 
@@ -358,20 +372,20 @@ forward(rate::T, to) where {T <: Rate} = rate
 forward(rate::T, from, to) where {T <: Rate} = rate
 
 """
-    +(Yields.Rate, T<:Real)
-    +(T<:Real, Yields.Rate)
-    +(Yields.Rate,Yields.Rate)
+    +(Rate, T<:Real)
+    +(T<:Real, Rate)
+    +(Rate, Rate)
 
 The addition of a rate with a number will inherit the type of the `Rate`, or the first argument's type if both are `Rate`s.
 
 # Examples
 
 ```julia-repl
-julia> Yields.Periodic(0.01,2) + Yields.Periodic(0.04,2)
-Yields.Rate{Float64, Yields.Periodic}(0.05000000000000004, Yields.Periodic(2))
+julia> Periodic(0.01, 2) + Periodic(0.04, 2)
+Periodic(0.04999999999999982, 2)
 
-julia> Yields.Periodic(0.04,2) + 0.01
-Yields.Rate{Float64, Yields.Periodic}(0.05, Yields.Periodic(2))
+julia> Periodic(0.04, 2) + 0.01
+Periodic(0.04999999999999982, 2)
 ```
 """
 function Base.:+(a::Rate{N, T}, b::Real) where {N, T <: Continuous}
@@ -396,22 +410,20 @@ function Base.:+(a::T, b::U) where {T <: Rate, U <: Rate}
 end
 
 """
-    -(Yields.Rate, T<:Real)
-    -(T<:Real, Yields.Rate)
-    -(Yields.Rate, Yields.Rate)
+    -(Rate, T<:Real)
+    -(T<:Real, Rate)
+    -(Rate, Rate)
 
-
-The addition of a rate with a number will inherit the type of the `Rate`, or the first argument's type if both are `Rate`s.
+The subtraction of a rate with a number will inherit the type of the `Rate`, or the first argument's type if both are `Rate`s.
 
 # Examples
 
 ```julia-repl
-julia> Yields.Periodic(0.04,2) - Yields.Periodic(0.01,2)
-Yields.Rate{Float64, Yields.Periodic}(0.030000000000000214, Yields.Periodic(2))
+julia> Periodic(0.04, 2) - Periodic(0.01, 2)
+Periodic(0.03000000000000025, 2)
 
-julia> Yields.Periodic(0.04,2) - 0.01
-Yields.Rate{Float64, Yields.Periodic}(0.03, Yields.Periodic(2))
-
+julia> Periodic(0.04, 2) - 0.01
+Periodic(0.03000000000000025, 2)
 ```
 """
 function Base.:-(a::Rate{N, T}, b::Real) where {N, T <: Continuous}
@@ -435,8 +447,8 @@ function Base.:-(a::T, b::U) where {T <: Rate, U <: Rate}
 end
 
 """
-    *(Yields.Rate, T)
-    *(T, Yields.Rate)
+    *(Rate, T<:Real)
+    *(T<:Real, Rate)
 
 The multiplication of a Rate with a scalar will inherit the type of the `Rate`, or the first argument's type if both are `Rate`s.
 """
@@ -456,7 +468,7 @@ end
 
 
 """
-    /(x::Yields.Rate, y::Real)
+    /(x::Rate, y::Real)
 
 The division of a Rate with a scalar will inherit the type of the `Rate`, or the first argument's type if both are `Rate`s.
 """
@@ -487,7 +499,7 @@ Convert the second argument to the periodicity of the first and compare the scal
 # Examples
 
 ```julia-repl
-julia> Yields.Periodic(0.03,100) < Yields.Continuous(0.03)
+julia> Periodic(0.03, 100) < Continuous(0.03)
 true
 ```
 """
@@ -520,7 +532,7 @@ Convert the second argument to the periodicity of the first and compare the scal
 # Examples
 
 ```julia-repl
-julia> Yields.Periodic(0.03,100) > Yields.Continuous(0.03)
+julia> Periodic(0.03, 100) > Continuous(0.03)
 false
 ```
 """
