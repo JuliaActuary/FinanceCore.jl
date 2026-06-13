@@ -4,7 +4,6 @@ using FinanceCore
 using FinanceCore: TurboBackend, VECTORIZATION_BACKEND, Cashflow, amount, timepoint
 using LoopVectorization
 
-# Set the backend to TurboBackend when this extension loads
 function __init__()
     return VECTORIZATION_BACKEND[] = TurboBackend()
 end
