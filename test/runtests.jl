@@ -11,7 +11,7 @@ include("contracts.jl")
 
 using Aqua
 @testset "Aqua.jl" begin
-    Aqua.test_all(FinanceCore; ambiguities = false)
+    Aqua.test_all(FinanceCore)
 end
 
 # Load LoopVectorization last: its extension flips VECTORIZATION_BACKEND for the
