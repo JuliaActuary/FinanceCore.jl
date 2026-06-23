@@ -32,7 +32,7 @@ struct Quote{N <: Real, T}
 end
 
 maturity(q::Quote) = maturity(q.instrument)
-Base.isapprox(a::Quote, b::Quote) = isapprox(a.price, b.price) && isapprox(a.instrument, b.instrument)
+Base.isapprox(a::Quote, b::Quote; kwargs...) = isapprox(a.price, b.price; kwargs...) && isapprox(a.instrument, b.instrument; kwargs...)
 
 
 """
