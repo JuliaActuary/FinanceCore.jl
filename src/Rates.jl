@@ -196,8 +196,11 @@ julia> convert(Continuous(), r)
 Continuous(0.009995835646701251)
 ```
 """
+# These all dispatch on a scalar `r::Rate`, so the calls below are scalar — the `.`
+# broadcasts were vestigial no-ops. (The public `Continuous`/`Periodic` convenience
+# constructors keep their broadcast, which lets them accept vectors.)
 function Base.convert(cf::T, r::Rate{<:Any, <:Frequency}) where {T <: Frequency}
-    return convert.(cf, r, r.compounding)
+    return convert(cf, r, r.compounding)
 end
 
 function Base.convert(cf::T, r::R) where {R <: Real} where {T <: Frequency}
@@ -210,27 +213,27 @@ end
 
 function Base.convert(to::Periodic, r, from::Continuous)
     # For Continuous rates, continuous_value equals the rate value
-    return Rate.(to.frequency * (exp(r.continuous_value / to.frequency) - 1), to)
+    return Rate(to.frequency * (exp(r.continuous_value / to.frequency) - 1), to)
 end
 
 function Base.convert(to::Continuous, r, from::Periodic)
     # r.continuous_value already contains the equivalent continuous rate
-    return Rate.(r.continuous_value, to)
+    return Rate(r.continuous_value, to)
 end
 
 function Base.convert(to::Periodic, r, from::Periodic)
     # r.continuous_value is the equivalent continuous rate, use it to convert directly
-    return Rate.(to.frequency * (exp(r.continuous_value / to.frequency) - 1), to)
+    return Rate(to.frequency * (exp(r.continuous_value / to.frequency) - 1), to)
 end
 
 function Continuous(r::Rate{<:Any, <:Periodic})
-    return convert.(Continuous(), r)
+    return convert(Continuous(), r)
 end
 function Continuous(r::Rate{<:Any, <:Continuous})
     return r
 end
 function Periodic(r::Rate{<:Any, <:Frequency}, frequency::Int)
-    return convert.(Periodic(frequency), r)
+    return convert(Periodic(frequency), r)
 end
 
 
@@ -292,26 +295,31 @@ function compounding(r::Rate{<:Any, <:Frequency})
     return r.compounding
 end
 
+# Every Rate stores its force of interest (the continuously-compounded equivalent) in
+# `continuous_value`. Comparisons and approximate-equality reduce to comparing that
+# field directly: it is exact, needs no compounding conversion or nominal-rate
+# round-trip (an `exp`), and is frame-symmetric — comparing nominal rates in `a`'s
+# frame, as before, is not (`a ≈ b` could differ from `b ≈ a` near the tolerance edge).
+_force(r::Rate) = r.continuous_value
+
 # Note: separate methods for each Periodic/Continuous combination, with independent
-# numeric parameters N1/N2, for the same invalidation reasons as `<`/`>` below.
-# A `T <: Rate` fallback that recursed after converting compounding could never
-# align differing numeric types (e.g. Float32 vs Float64, or Dual vs Float64)
-# and would overflow the stack. Tolerance kwargs are forwarded to the scalar
-# `isapprox` so that Base's `rtoldefault` can account for mixed precisions.
+# numeric parameters N1/N2, for the same invalidation reasons as `<`/`>` below: a
+# `T <: Rate` fallback would put an abstract signature on `Base.isapprox`. Tolerance
+# kwargs are forwarded so that Base's `rtoldefault` can account for mixed precisions.
 function Base.isapprox(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}; kwargs...) where {N1, N2}
-    return isapprox(rate(a), rate(convert(a.compounding, b)); kwargs...)
+    return isapprox(_force(a), _force(b); kwargs...)
 end
 
 function Base.isapprox(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}; kwargs...) where {N1, N2}
-    return isapprox(rate(a), rate(b); kwargs...)
+    return isapprox(_force(a), _force(b); kwargs...)
 end
 
 function Base.isapprox(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}; kwargs...) where {N1, N2}
-    return isapprox(rate(a), rate(convert(a.compounding, b)); kwargs...)
+    return isapprox(_force(a), _force(b); kwargs...)
 end
 
 function Base.isapprox(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}; kwargs...) where {N1, N2}
-    return isapprox(rate(a), rate(convert(a.compounding, b)); kwargs...)
+    return isapprox(_force(a), _force(b); kwargs...)
 end
 
 
@@ -371,6 +379,18 @@ Base.zero(rate::T, t) where {T <: Rate} = rate
 forward(rate::T, to) where {T <: Rate} = rate
 forward(rate::T, from, to) where {T <: Rate} = rate
 
+# Rebuild a Rate with the same compounding as `r` but a new nominal value `v`. Every
+# scalar rate operation is "transform the nominal rate, keep the compounding"; this is
+# the single source of truth for that. Concrete `Continuous`/`Periodic` dispatch keeps
+# callers off the `+`/`-`/`*`/`/` invalidation path.
+_remake(r::Rate{N, Continuous}, v) where {N} = Continuous(v)
+_remake(r::Rate{N, Periodic}, v) where {N} = Periodic(v, r.compounding.frequency)
+
+# Rate-with-Rate add/subtract: convert the second into the first's compounding, then
+# operate on nominal values in that frame.
+_add(a::Rate, b::Rate) = _remake(a, rate(a) + rate(convert(a.compounding, b)))
+_sub(a::Rate, b::Rate) = _remake(a, rate(a) - rate(convert(a.compounding, b)))
+
 """
     +(Rate, T<:Real)
     +(T<:Real, Rate)
@@ -388,26 +408,17 @@ julia> Periodic(0.04, 2) + 0.01
 Periodic(0.04999999999999982, 2)
 ```
 """
-function Base.:+(a::Rate{N, T}, b::Real) where {N, T <: Continuous}
-    return Continuous(rate(a) + b)
-end
-function Base.:+(a::Real, b::Rate{N, T}) where {N, T <: Continuous}
-    return Continuous(rate(b) + a)
-end
+Base.:+(a::Rate{N, Continuous}, b::Real) where {N} = _remake(a, rate(a) + b)
+Base.:+(a::Rate{N, Periodic}, b::Real) where {N} = _remake(a, rate(a) + b)
+Base.:+(a::Real, b::Rate{N, Continuous}) where {N} = _remake(b, a + rate(b))
+Base.:+(a::Real, b::Rate{N, Periodic}) where {N} = _remake(b, a + rate(b))
 
-function Base.:+(a::Rate{N, T}, b::Real) where {N, T <: Periodic}
-    return Periodic(rate(a) + b, a.compounding.frequency)
-end
-function Base.:+(a::Real, b::Rate{N, T}) where {N, T <: Periodic}
-    return Periodic(rate(b) + a, b.compounding.frequency)
-end
-
-function Base.:+(a::T, b::U) where {T <: Rate, U <: Rate}
-    a_rate = rate(a)
-    b_rate = rate(convert(a.compounding, b))
-    r = Rate(a_rate + b_rate, a.compounding)
-    return r
-end
+# Rate + Rate: concrete combinations (not `where {T<:Rate, U<:Rate}`) to match the
+# invalidation-avoidance convention used by `<`/`>`/`isapprox`.
+Base.:+(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2} = _add(a, b)
+Base.:+(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2} = _add(a, b)
+Base.:+(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2} = _add(a, b)
+Base.:+(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2} = _add(a, b)
 
 """
     -(Rate, T<:Real)
@@ -426,25 +437,16 @@ julia> Periodic(0.04, 2) - 0.01
 Periodic(0.03000000000000025, 2)
 ```
 """
-function Base.:-(a::Rate{N, T}, b::Real) where {N, T <: Continuous}
-    return Continuous(rate(a) - b)
-end
-function Base.:-(a::Real, b::Rate{N, T}) where {N, T <: Continuous}
-    return Continuous(a - rate(b))
-end
+Base.:-(a::Rate{N, Continuous}, b::Real) where {N} = _remake(a, rate(a) - b)
+Base.:-(a::Rate{N, Periodic}, b::Real) where {N} = _remake(a, rate(a) - b)
+Base.:-(a::Real, b::Rate{N, Continuous}) where {N} = _remake(b, a - rate(b))
+Base.:-(a::Real, b::Rate{N, Periodic}) where {N} = _remake(b, a - rate(b))
 
-function Base.:-(a::Rate{N, T}, b::Real) where {N, T <: Periodic}
-    return Periodic(rate(a) - b, a.compounding.frequency)
-end
-function Base.:-(a::Real, b::Rate{N, T}) where {N, T <: Periodic}
-    return Periodic(a - rate(b), b.compounding.frequency)
-end
-function Base.:-(a::T, b::U) where {T <: Rate, U <: Rate}
-    a_rate = rate(a)
-    b_rate = rate(convert(a.compounding, b))
-    r = Rate(a_rate - b_rate, a.compounding)
-    return r
-end
+# Rate - Rate: concrete combinations, see `+` above.
+Base.:-(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2} = _sub(a, b)
+Base.:-(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2} = _sub(a, b)
+Base.:-(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2} = _sub(a, b)
+Base.:-(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2} = _sub(a, b)
 
 """
     *(Rate, T<:Real)
@@ -452,19 +454,10 @@ end
 
 The multiplication of a Rate with a scalar will inherit the type of the `Rate`, or the first argument's type if both are `Rate`s.
 """
-function Base.:*(a::Rate{N, T}, b::Real) where {N, T <: Continuous}
-    return Continuous(rate(a) * b)
-end
-function Base.:*(a::Real, b::Rate{N, T}) where {N, T <: Continuous}
-    return Continuous(a * rate(b))
-end
-
-function Base.:*(a::Rate{N, T}, b::Real) where {N, T <: Periodic}
-    return Periodic(rate(a) * b, a.compounding.frequency)
-end
-function Base.:*(a::Real, b::Rate{N, T}) where {N, T <: Periodic}
-    return Periodic(a * rate(b), b.compounding.frequency)
-end
+Base.:*(a::Rate{N, Continuous}, b::Real) where {N} = _remake(a, rate(a) * b)
+Base.:*(a::Rate{N, Periodic}, b::Real) where {N} = _remake(a, rate(a) * b)
+Base.:*(a::Real, b::Rate{N, Continuous}) where {N} = _remake(b, a * rate(b))
+Base.:*(a::Real, b::Rate{N, Periodic}) where {N} = _remake(b, a * rate(b))
 
 
 """
@@ -472,23 +465,11 @@ end
 
 The division of a Rate with a scalar will inherit the type of the `Rate`, or the first argument's type if both are `Rate`s.
 """
-function Base.:/(a::Rate{N, T}, b::Real) where {N, T <: Continuous}
-    return Continuous(rate(a) / b)
-end
+Base.:/(a::Rate{N, Continuous}, b::Real) where {N} = _remake(a, rate(a) / b)
+Base.:/(a::Rate{N, Periodic}, b::Real) where {N} = _remake(a, rate(a) / b)
 
-# unclear if dividing a scalar by a rate should be allowed
-# function Base.:/(a::Real, b::Rate{N,T}) where {N<:Real,T<:Continuous}
-#     return Continuous( a / rate(b))
-# end
-
-function Base.:/(a::Rate{N, T}, b::Real) where {N, T <: Periodic}
-    return Periodic(rate(a) / b, a.compounding.frequency)
-end
-
-# unclear if dividing a scalar by a rate should be allowed
-# function Base.:/(a::Real, b::Rate{N,T}) where {N<:Real, T<:Periodic}
-#     return Periodic(a / rate(b), b.compounding.frequency)
-# end
+# Dividing a scalar by a rate (`Real / Rate`) is intentionally left undefined — the
+# semantics are unclear, so it errors rather than guessing.
 
 
 """
@@ -503,26 +484,15 @@ julia> Periodic(0.03, 100) < Continuous(0.03)
 true
 ```
 """
-# Note: We define separate methods for each combination of Periodic/Continuous
-# instead of using `where {T <: Rate, U <: Rate}` to avoid compilation invalidations.
-# Abstract type bounds like `<: Rate` cause Julia to invalidate previously compiled
-# code for `<(::Any, ::Any)` signatures. Concrete type combinations don't have this issue.
+# Note: separate concrete methods for each Periodic/Continuous combination (rather than
+# `where {T <: Rate, U <: Rate}`) keep these off the invalidation path for `<(::Any, ::Any)`;
+# abstract `<: Rate` bounds invalidate previously compiled generic code, concrete ones don't.
 # See: https://juliadebug.github.io/SnoopCompile.jl/stable/tutorials/invalidations/
-function Base.:<(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2}
-    bc = convert(a.compounding, b)
-    return rate(a) < rate(bc)
-end
-function Base.:<(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2}
-    return rate(a) < rate(b)
-end
-function Base.:<(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2}
-    bc = convert(a.compounding, b)
-    return rate(a) < rate(bc)
-end
-function Base.:<(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2}
-    bc = convert(a.compounding, b)
-    return rate(a) < rate(bc)
-end
+# A lower force of interest is exactly a lower `continuous_value`, so each forwards to `_force`.
+Base.:<(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2} = _force(a) < _force(b)
+Base.:<(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2} = _force(a) < _force(b)
+Base.:<(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2} = _force(a) < _force(b)
+Base.:<(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2} = _force(a) < _force(b)
 
 """
     >(Rate,Rate)
@@ -536,21 +506,8 @@ julia> Periodic(0.03, 100) > Continuous(0.03)
 false
 ```
 """
-# Note: We define separate methods for each combination of Periodic/Continuous
-# instead of using `where {T <: Rate, U <: Rate}` to avoid compilation invalidations.
-# See comment above for `<` methods.
-function Base.:>(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2}
-    bc = convert(a.compounding, b)
-    return rate(a) > rate(bc)
-end
-function Base.:>(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2}
-    return rate(a) > rate(b)
-end
-function Base.:>(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2}
-    bc = convert(a.compounding, b)
-    return rate(a) > rate(bc)
-end
-function Base.:>(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2}
-    bc = convert(a.compounding, b)
-    return rate(a) > rate(bc)
-end
+# Separate concrete combinations, see the note on `<` above.
+Base.:>(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2} = _force(a) > _force(b)
+Base.:>(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2} = _force(a) > _force(b)
+Base.:>(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2} = _force(a) > _force(b)
+Base.:>(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2} = _force(a) > _force(b)
