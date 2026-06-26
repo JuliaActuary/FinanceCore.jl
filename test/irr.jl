@@ -37,6 +37,10 @@ p(rate) = Periodic(rate, 1)
     @test isnothing(irr([1.0e-50, 1.0e-50, 1.0e-50]))
     @test isnothing(irr([1.0e-300, 1.0e-300, 1.0e-300], 0:2))
 
+    # too few timepoints errors loudly instead of reading out of bounds in the kernel
+    @test_throws DimensionMismatch irr([-100, 110], [0])
+    @test_throws DimensionMismatch irr([-100, 110, 120], [0, 1])
+
 end
 
 @testset "irr with fractional time" begin
