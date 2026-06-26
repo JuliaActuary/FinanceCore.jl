@@ -19,26 +19,16 @@ Periodic(0.1, 1)
 First tries Newton's method (fast). If Newton does not converge, falls back to a robust root-finding search in continuous rate space over `[-5, 3]` (approximately `[-0.993, 19.1]` in periodic rate). When the fallback finds multiple roots, returns the one nearest zero.
 """
 function internal_rate_of_return(cashflows::AbstractVector{<:Real})
-    # timepoints match the cashflows by construction, so go straight to the solver
-    return _solve_irr(cashflows, 0:(length(cashflows) - 1))
+    return internal_rate_of_return(cashflows, 0:(length(cashflows) - 1))
 end
 
 # `Cashflow`s carry their own timepoints; `times === nothing` is the sentinel that lets
-# one solver core serve both representations. Only the innermost kernel (`__pv_div_pv′`)
+# one code path serve both representations. Only the innermost kernel (`__pv_div_pv′`)
 # specializes on the representation, and it does so in place — no arrays are materialized.
-internal_rate_of_return(cashflows::Vector{<:Cashflow}) = _solve_irr(cashflows, nothing)
-
-# Public entry for separate cashflow/timepoint vectors. This is the only path where the
-# lengths can disagree, so it's the one place we validate — the @inbounds/@turbo kernels
-# assume every cashflow has a timepoint and would read out of bounds otherwise.
-function internal_rate_of_return(cashflows, times)
-    length(times) >= length(cashflows) ||
-        throw(DimensionMismatch("each cashflow needs a timepoint: got $(length(cashflows)) cashflows and $(length(times)) timepoints"))
-    return _solve_irr(cashflows, times)
-end
+internal_rate_of_return(cashflows::Vector{<:Cashflow}) = internal_rate_of_return(cashflows, nothing)
 
 # newton's method first (fast); fall back to a robust search if it doesn't converge
-function _solve_irr(cashflows, times)
+function internal_rate_of_return(cashflows, times)
     v = irr_newton(cashflows, times)
     return isnan(rate(v)) ? irr_robust(cashflows, times) : v
 end
