@@ -314,6 +314,57 @@ function Base.isapprox(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}; kwargs...
     return isapprox(rate(a), rate(convert(a.compounding, b)); kwargs...)
 end
 
+"""
+    ==(a::Rate, b::Rate)
+
+Two `Rate`s are equal when they represent the same force of interest — the same
+continuously compounded equivalent rate — regardless of the compounding convention
+they are quoted in. This makes `==` consistent with the orderings defined by `<`,
+`>`, and with `isapprox`, all of which compare across compounding conventions.
+
+Note that equality is exact on the underlying floating-point representation:
+rates that are economically equal but arrive at their internal continuous value
+through different rounding will *not* compare `==` (use `isapprox` for that),
+while a `Rate` and its `convert`ed representation in another compounding
+convention (which shares the internal value exactly) will.
+
+# Examples
+
+```julia-repl
+julia> r = Periodic(0.05, 2);
+
+julia> r == convert(Continuous(), r)
+true
+
+julia> r == Periodic(0.05, 2)
+true
+
+julia> Periodic(0.05, 2) == Periodic(0.05, 4)
+false
+```
+"""
+# Equality, isequal, and hash all reduce to the stored `continuous_value`, keeping the
+# `isequal`/`hash` contract (equal values hash equally, including across
+# Periodic/Continuous). `isequal` forwards to `isequal` on the underlying numbers so
+# NaN/-0.0 semantics match Base's.
+#
+# Note: separate concrete Periodic/Continuous combinations, matching the
+# invalidation-avoidance convention of `isapprox` above and `<`/`>` below.
+Base.:(==)(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2} = a.continuous_value == b.continuous_value
+Base.:(==)(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2} = a.continuous_value == b.continuous_value
+Base.:(==)(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2} = a.continuous_value == b.continuous_value
+Base.:(==)(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2} = a.continuous_value == b.continuous_value
+
+Base.isequal(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2} = isequal(a.continuous_value, b.continuous_value)
+Base.isequal(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2} = isequal(a.continuous_value, b.continuous_value)
+Base.isequal(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2} = isequal(a.continuous_value, b.continuous_value)
+Base.isequal(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2} = isequal(a.continuous_value, b.continuous_value)
+
+# The compounding convention is deliberately excluded from the hash: equal-force rates
+# are `==`/`isequal` across conventions, so they must hash identically.
+Base.hash(r::Rate{<:Any, Periodic}, h::UInt) = hash(r.continuous_value, hash(:FinanceCoreRate, h))
+Base.hash(r::Rate{<:Any, Continuous}, h::UInt) = hash(r.continuous_value, hash(:FinanceCoreRate, h))
+
 
 """
     discount(rate, t)

@@ -113,6 +113,44 @@
 
     end
 
+    @testset "force-of-interest equality and hashing" begin
+        p = Periodic(0.05, 2)
+        c = convert(Continuous(), p)   # shares the internal continuous value exactly
+
+        # == is force equality, consistent with <, >, and isapprox semantics
+        @test p == c
+        @test c == p
+        @test isequal(p, c)
+        @test hash(p) == hash(c)
+        @test !(p < c) && !(p > c)   # equal force: neither ordering holds
+
+        # same nominal rate, different frequency → different force
+        @test Periodic(0.05, 2) != Periodic(0.05, 4)
+        @test Continuous(0.03) != Continuous(0.04)
+
+        # equality stays exact: economically equal but differently-rounded rates
+        # are only ≈, never ==
+        a = Periodic(0.02, 2)
+        a_eq = Periodic((1 + 0.02 / 2)^2 - 1, 1)
+        @test a != a_eq
+        @test a ≈ a_eq
+
+        # Dict/Set follow isequal/hash across compounding conventions
+        @test length(Set([p, c])) == 1
+        d = Dict(p => 1)
+        @test d[c] == 1
+
+        # mixed numeric types with exactly representable values
+        @test Continuous(0.5) == Continuous(0.5f0)
+
+        # NaN follows Base number semantics: == is false, isequal/hash agree
+        n1 = Continuous(NaN)
+        n2 = Continuous(NaN)
+        @test n1 != n2
+        @test isequal(n1, n2)
+        @test hash(n1) == hash(n2)
+    end
+
     @testset "mixed numeric type isapprox" begin
         # mixed numeric types previously recursed to a StackOverflowError
         @test Periodic(0.5f0, 2) ≈ Periodic(0.5, 2)
