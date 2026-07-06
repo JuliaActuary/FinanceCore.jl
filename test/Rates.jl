@@ -169,6 +169,34 @@
         @test hash(n1) == hash(n2)
     end
 
+    @testset "isless and order-based Base functions" begin
+        lo = Periodic(0.02, 2)
+        hi = Continuous(0.05)
+
+        # isless orders by force of interest, consistent with < and >
+        @test isless(lo, hi)
+        @test !isless(hi, lo)
+        @test !isless(lo, lo)
+        @test isless(lo, hi) == (lo < hi)
+        # a periodic rate has a lower force than the same nominal rate compounded continuously
+        @test isless(Periodic(0.03, 100), Continuous(0.03))
+        @test !isless(Continuous(0.03), Periodic(0.03, 100))
+
+        # order-based Base functions now work
+        rs = [Continuous(0.05), Periodic(0.02, 2), Periodic(0.04, 12)]
+        @test sort(rs) == [rs[2], rs[3], rs[1]]
+        @test minimum(rs) == Periodic(0.02, 2)
+        @test maximum(rs) == Continuous(0.05)
+        @test extrema(rs) == (Periodic(0.02, 2), Continuous(0.05))
+        @test min(lo, hi) == lo
+        @test max(lo, hi) == hi
+        @test clamp(Continuous(0.10), lo, hi) == hi
+        @test clamp(Continuous(0.03), lo, hi) == Continuous(0.03)
+
+        # mixed numeric types
+        @test isless(Periodic(0.02f0, 2), Periodic(0.03, 2))
+    end
+
     @testset "mixed numeric type isapprox" begin
         # mixed numeric types previously recursed to a StackOverflowError
         @test Periodic(0.5f0, 2) ≈ Periodic(0.5, 2)
