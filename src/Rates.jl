@@ -107,13 +107,17 @@ function Rate(value::N, compounding::Continuous) where {N}
 end
 
 # Outer constructor for Periodic rates - precompute continuous equivalent
-function Rate(value::N, compounding::Periodic) where {N}
-    # continuous_value = n * log(1 + r/n), which is the equivalent continuous rate.
+function Rate(value, compounding::Periodic)
+    # continuous_value = n * log1p(r/n), which is the equivalent continuous rate.
     # log1p (and expm1 on the way back in `rate`) keeps the nominal↔continuous
     # round-trip accurate to ~1 ulp for small r/n, where log(1 + x) alone loses
     # ~x⁻¹·eps of relative precision.
+    # The numeric type parameter follows the computed continuous value (Float64 for
+    # integer input, Float32 for Float32 input, Dual for Dual input, ...) rather than
+    # converting back to the input type — converting a generally-irrational log back
+    # to e.g. an integer type is an InexactError (Rate(1, Periodic(1)) used to throw).
     continuous_value = compounding.frequency * log1p(value / compounding.frequency)
-    return Rate{N, Periodic}(convert(N, continuous_value), compounding)
+    return Rate{typeof(continuous_value), Periodic}(continuous_value, compounding)
 end
 
 # make rate a broadcastable type
