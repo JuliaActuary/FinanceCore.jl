@@ -108,8 +108,11 @@ end
 
 # Outer constructor for Periodic rates - precompute continuous equivalent
 function Rate(value::N, compounding::Periodic) where {N}
-    # continuous_value = n * log(1 + r/n), which is the equivalent continuous rate
-    continuous_value = compounding.frequency * log(1 + value / compounding.frequency)
+    # continuous_value = n * log(1 + r/n), which is the equivalent continuous rate.
+    # log1p (and expm1 on the way back in `rate`) keeps the nominal↔continuous
+    # round-trip accurate to ~1 ulp for small r/n, where log(1 + x) alone loses
+    # ~x⁻¹·eps of relative precision.
+    continuous_value = compounding.frequency * log1p(value / compounding.frequency)
     return Rate{N, Periodic}(convert(N, continuous_value), compounding)
 end
 
@@ -187,13 +190,13 @@ Returns a `Rate` with an equivalent discount but represented with a different co
 
 ```julia-repl
 julia> r = Rate(0.01, Periodic(12))
-Periodic(0.009999999999998899, 12)
+Periodic(0.009999999999999998, 12)
 
 julia> convert(Periodic(1), r)
-Periodic(0.010045960887181016, 1)
+Periodic(0.010045960887182024, 1)
 
 julia> convert(Continuous(), r)
-Continuous(0.009995835646701251)
+Continuous(0.009995835646702353)
 ```
 """
 function Base.convert(cf::T, r::Rate{<:Any, <:Frequency}) where {T <: Frequency}
@@ -210,7 +213,7 @@ end
 
 function Base.convert(to::Periodic, r, from::Continuous)
     # For Continuous rates, continuous_value equals the rate value
-    return Rate.(to.frequency * (exp(r.continuous_value / to.frequency) - 1), to)
+    return Rate.(to.frequency * expm1(r.continuous_value / to.frequency), to)
 end
 
 function Base.convert(to::Continuous, r, from::Periodic)
@@ -220,7 +223,7 @@ end
 
 function Base.convert(to::Periodic, r, from::Periodic)
     # r.continuous_value is the equivalent continuous rate, use it to convert directly
-    return Rate.(to.frequency * (exp(r.continuous_value / to.frequency) - 1), to)
+    return Rate.(to.frequency * expm1(r.continuous_value / to.frequency), to)
 end
 
 function Continuous(r::Rate{<:Any, <:Periodic})
@@ -262,9 +265,10 @@ function rate(r::Rate{<:Any, Continuous})
 end
 
 function rate(r::Rate{<:Any, Periodic})
-    # continuous_value = n * log(1 + r/n), so r = n * (exp(continuous_value/n) - 1)
+    # continuous_value = n * log1p(r/n), so r = n * expm1(continuous_value/n).
+    # expm1 mirrors the constructor's log1p so the round-trip is ~1 ulp accurate.
     n = r.compounding.frequency
-    return n * (exp(r.continuous_value / n) - 1)
+    return n * expm1(r.continuous_value / n)
 end
 
 """
@@ -382,10 +386,10 @@ The addition of a rate with a number will inherit the type of the `Rate`, or the
 
 ```julia-repl
 julia> Periodic(0.01, 2) + Periodic(0.04, 2)
-Periodic(0.04999999999999982, 2)
+Periodic(0.05, 2)
 
 julia> Periodic(0.04, 2) + 0.01
-Periodic(0.04999999999999982, 2)
+Periodic(0.05, 2)
 ```
 """
 function Base.:+(a::Rate{N, T}, b::Real) where {N, T <: Continuous}
@@ -420,10 +424,10 @@ The subtraction of a rate with a number will inherit the type of the `Rate`, or 
 
 ```julia-repl
 julia> Periodic(0.04, 2) - Periodic(0.01, 2)
-Periodic(0.03000000000000025, 2)
+Periodic(0.03, 2)
 
 julia> Periodic(0.04, 2) - 0.01
-Periodic(0.03000000000000025, 2)
+Periodic(0.03, 2)
 ```
 """
 function Base.:-(a::Rate{N, T}, b::Real) where {N, T <: Continuous}
