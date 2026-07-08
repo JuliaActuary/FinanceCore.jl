@@ -19,6 +19,31 @@
 
     end
 
+    @testset "integer rate values" begin
+        # Rate(1, Periodic(1)) — a 100% annual effective rate — previously threw
+        # InexactError from converting the (irrational) continuous equivalent back
+        # to the integer input type. The numeric parameter now follows the computed
+        # continuous value instead.
+        r = Rate(1, Periodic(1))
+        @test r isa Rate{Float64, Periodic}
+        @test rate(r) ≈ 1.0
+        @test accumulation(r, 1) ≈ 2.0
+        @test discount(r, 1) ≈ 0.5
+
+        @test Periodic(1, 2) isa Rate{Float64, Periodic}
+        @test Rate(2) isa Rate{Float64, Periodic}
+
+        # a zero integer rate remains constructible
+        @test rate(Rate(0, Periodic(4))) == 0.0
+
+        # non-integer numeric types keep their type
+        @test Rate(0.05f0, Periodic(2)) isa Rate{Float32, Periodic}
+        @test Rate(big"0.05", Periodic(2)) isa Rate{BigFloat, Periodic}
+
+        # integer-valued Continuous rates were already constructible; unchanged
+        @test accumulation(Rate(1, Continuous()), 1) ≈ exp(1)
+    end
+
     @testset "rate conversions" begin
         m = Rate(0.1, Periodic(2))
         @test convert(Periodic(2), 0.1) ≈ m
