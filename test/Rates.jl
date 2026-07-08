@@ -62,6 +62,24 @@
         @test rate(c2) == 0.06
     end
 
+    @testset "nominal↔continuous round-trip precision" begin
+        # The constructor stores n*log1p(r/n) and rate() inverts with n*expm1(cv/n),
+        # so the nominal rate survives a construction round-trip to within a few ulps
+        # even when r/n is small (log(1+x) alone loses ~x⁻¹·eps of relative precision).
+        for f in (1, 2, 4, 12, 365), r in (1.0e-6, 1.0e-4, 0.01, 0.05, 0.5, -0.01, -0.2)
+            @test rate(Periodic(r, f)) ≈ r rtol = 4 * eps()
+        end
+
+        # arithmetic in nominal space no longer accretes conversion noise
+        @test rate(Periodic(0.01, 2) + Periodic(0.04, 2)) ≈ 0.05 rtol = 4 * eps()
+        @test rate(Periodic(0.04, 2) - Periodic(0.01, 2)) ≈ 0.03 rtol = 4 * eps()
+
+        # Float32 values stay Float32 and round-trip at Float32 precision
+        r32 = Periodic(0.01f0, 12)
+        @test rate(r32) isa Float32
+        @test rate(r32) ≈ 0.01f0 rtol = 4 * eps(Float32)
+    end
+
     @testset "compounding() function returns compounding frequency" begin
         # Test compounding() returns Continuous() for continuous rates
         c = Rate(0.05, Continuous())
