@@ -373,8 +373,11 @@ Base.hash(r::Rate{<:Any, Continuous}, h::UInt) = hash(r.continuous_value, hash(:
 """
     discount(rate, t)
     discount(rate, from, to)
+    discount(rate, from::Date, to::Date, dc::DayCounts.DayCount)
 
-Discount `rate` for a time `t` or for an interval `(from, to)`. If `rate` is not a `Rate`, it will be assumed to be a `Periodic` rate compounded once per period, i.e. `Periodic(rate,1)`. 
+Discount `rate` for a time `t` or for an interval `(from, to)`. If `rate` is not a `Rate`, it will be assumed to be a `Periodic` rate compounded once per period, i.e. `Periodic(rate,1)`.
+
+When [DayCounts.jl](https://github.com/JuliaFinance/DayCounts.jl) is loaded, a `Date` interval can be discounted directly by passing a day count convention, which measures the interval via `DayCounts.yearfrac(from, to, dc)`.
 
 # Examples
 
@@ -399,8 +402,11 @@ discount(rate, from, to) = discount(rate, to - from)
 """
     accumulation(rate, t)
     accumulation(rate, from, to)
+    accumulation(rate, from::Date, to::Date, dc::DayCounts.DayCount)
 
-Accumulate `rate` for a time `t` or for an interval `(from, to)`. If `rate` is not a `Rate`, it will be assumed to be a `Periodic` rate compounded once per period, i.e. `Periodic(rate,1)`. 
+Accumulate `rate` for a time `t` or for an interval `(from, to)`. If `rate` is not a `Rate`, it will be assumed to be a `Periodic` rate compounded once per period, i.e. `Periodic(rate,1)`.
+
+When [DayCounts.jl](https://github.com/JuliaFinance/DayCounts.jl) is loaded, accumulation over a `Date` interval can be computed directly by passing a day count convention, which measures the interval via `DayCounts.yearfrac(from, to, dc)`.
 
     # Examples
 

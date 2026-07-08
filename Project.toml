@@ -8,13 +8,16 @@ Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
 
 [weakdeps]
+DayCounts = "44e31299-2c53-5a9b-9141-82aa45d7972f"
 LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
 
 [extensions]
+FinanceCoreDayCountsExt = "DayCounts"
 FinanceCoreLoopVectorizationExt = "LoopVectorization"
 
 [compat]
 Dates = "1"
+DayCounts = "0.1"
 LoopVectorization = "0.12"
 Roots = "1, 2"
 julia = "1.10"
