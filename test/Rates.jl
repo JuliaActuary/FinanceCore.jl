@@ -190,7 +190,7 @@
         @test extrema(rs) == (Periodic(0.02, 2), Continuous(0.05))
         @test min(lo, hi) == lo
         @test max(lo, hi) == hi
-        @test clamp(Continuous(0.10), lo, hi) == hi
+        @test clamp(Continuous(0.1), lo, hi) == hi
         @test clamp(Continuous(0.03), lo, hi) == Continuous(0.03)
 
         # mixed numeric types
