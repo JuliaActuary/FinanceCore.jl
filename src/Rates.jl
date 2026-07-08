@@ -613,3 +613,46 @@ function Base.:>(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2}
     bc = convert(a.compounding, b)
     return rate(a) > rate(bc)
 end
+
+"""
+    isless(a::Rate, b::Rate)
+
+Total ordering of `Rate`s by force of interest (the continuously compounded equivalent
+rate), consistent with the ordering used by `<` and `>`.
+
+Defining `isless` is what enables the order-based functions in `Base` — `sort`,
+`minimum`/`maximum`, `extrema`, `min`/`max`, and `clamp` — to work on `Rate`s.
+
+# Examples
+
+```julia-repl
+julia> sort([Continuous(0.03), Periodic(0.02, 2)])
+2-element Vector{Rate{Float64}}:
+ Periodic(0.02, 2)
+ Continuous(0.03)
+
+julia> minimum([Periodic(0.05, 2), Continuous(0.03)])
+Continuous(0.03)
+```
+"""
+# Every Rate stores its continuously compounded equivalent in `continuous_value`, and
+# a lower force of interest is exactly a lower `continuous_value`, so `isless` compares
+# that field directly — no compounding conversion needed, and the comparison is
+# frame-symmetric. Forwarding to `isless` on the underlying numbers inherits its total
+# order (e.g. NaN ordering).
+#
+# Note: We define separate methods for each combination of Periodic/Continuous
+# instead of using `where {T <: Rate, U <: Rate}` to avoid compilation invalidations.
+# See comment above for `<` methods.
+function Base.isless(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2}
+    return isless(a.continuous_value, b.continuous_value)
+end
+function Base.isless(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2}
+    return isless(a.continuous_value, b.continuous_value)
+end
+function Base.isless(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2}
+    return isless(a.continuous_value, b.continuous_value)
+end
+function Base.isless(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2}
+    return isless(a.continuous_value, b.continuous_value)
+end
