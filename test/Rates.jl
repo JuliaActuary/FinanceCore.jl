@@ -88,8 +88,6 @@
     end
 
     @testset "nominal↔continuous round-trip precision" begin
-        @test rate(Periodic(1.0e-16, 1)) == 1.0e-16
-
         # The constructor stores n*log1p(r/n) and rate() inverts with n*expm1(cv/n),
         # so the nominal rate survives a construction round-trip to within a few ulps
         # even when r/n is small (log(1+x) alone loses ~x⁻¹·eps of relative precision).

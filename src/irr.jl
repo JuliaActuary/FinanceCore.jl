@@ -50,6 +50,10 @@ end
 
 irr_robust(cashflows) = irr_robust(cashflows, 0:(length(cashflows) - 1))
 
+# Convert a force of interest from the solvers to an annual effective rate.
+# `expm1` preserves nominal rates too small for `exp(r) - 1` to represent.
+_periodic_from_force(r) = Periodic(expm1(r), 1)
+
 function irr_robust(cashflows, times)
     # IRR is scale-invariant; normalizing keeps f(r) in O(1) range
     # so that find_zeros can reliably distinguish roots from noise.
@@ -65,7 +69,7 @@ function irr_robust(cashflows, times)
     isempty(roots) && return nothing
     # find the root nearest zero and convert back to periodic rate
     min_i = argmin(abs.(roots))
-    return Periodic(expm1(roots[min_i]), 1)
+    return _periodic_from_force(roots[min_i])
 
 end
 
@@ -79,7 +83,7 @@ function irr_robust(cashflows::Vector{C}) where {C <: Cashflow}
     isempty(roots) && return nothing
     # find the root nearest zero and convert back to periodic rate
     min_i = argmin(abs.(roots))
-    return Periodic(expm1(roots[min_i]), 1)
+    return _periodic_from_force(roots[min_i])
 
 end
 
@@ -94,7 +98,7 @@ function irr_newton(cashflows, times)
         1.0e-9,
         100
     )
-    return Periodic(expm1(r), 1)
+    return _periodic_from_force(r)
 
 end
 
@@ -106,7 +110,7 @@ function irr_newton(cashflows::Vector{C}) where {C <: Cashflow}
         1.0e-9,
         100
     )
-    return Periodic(expm1(r), 1)
+    return _periodic_from_force(r)
 
 end
 
