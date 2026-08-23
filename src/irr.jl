@@ -50,7 +50,7 @@ function _is_irr_root(r, cashflows, times, M, t0)
         scale += abs(term)
     end
     return isfinite(residual) && isfinite(scale) && !iszero(scale) &&
-           abs(residual) ≤ sqrt(eps(Float64)) * scale
+        abs(residual) ≤ sqrt(eps(Float64)) * scale
 end
 
 function irr_robust(cashflows, times = nothing)
@@ -72,7 +72,7 @@ function irr_robust(cashflows, times = nothing)
     # in periodic space (where (1+i)^t is undefined for fractional t)
     f(r) = sum(
         _amt(cashflows, i) / M * exp(-r * (_tim(cashflows, times, i) - t0))
-        for i in eachindex(cashflows)
+            for i in eachindex(cashflows)
     )
     roots = Roots.find_zeros(f, -5.0, 3.0)
     filter!(r -> _is_irr_root(r, cashflows, times, M, t0), roots)
