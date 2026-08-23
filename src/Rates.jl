@@ -68,6 +68,8 @@ struct Periodic <: Frequency
     end
 end
 
+Periodic(frequency::Integer) = Periodic(Int(frequency))
+
 function Periodic(frequency::T) where {T <: AbstractFloat}
     f = Int(round(frequency, digits = 8))
     return Periodic(f)
@@ -236,7 +238,7 @@ end
 function Continuous(r::Rate{<:Any, <:Continuous})
     return r
 end
-function Periodic(r::Rate{<:Any, <:Frequency}, frequency::Int)
+function Periodic(r::Rate{<:Any, <:Frequency}, frequency::Integer)
     return convert.(Periodic(frequency), r)
 end
 
