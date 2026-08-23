@@ -14,11 +14,11 @@ FinanceCore._vectorization_backend(
 
 # @turbo implementation for TurboBackend
 function FinanceCore.__pv_div_pv′(
-    ::TurboBackend,
-    r::T,
-    cashflows::StridedVector{T},
-    times::StridedVector{T},
-) where {T <: TurboFloat}
+        ::TurboBackend,
+        r::T,
+        cashflows::StridedVector{T},
+        times::StridedVector{T},
+    ) where {T <: TurboFloat}
     n = 0.0
     d = 0.0
     @turbo for i in eachindex(cashflows)
