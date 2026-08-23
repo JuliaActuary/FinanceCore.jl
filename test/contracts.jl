@@ -14,6 +14,10 @@
 
         @test maturity(q) ≈ maturity(cf11)
         @test q ≈ Quote(1, cf11)
+
+        shifted_q = Quote(1.1, Cashflow(1.1, 1.1))
+        @test !(q ≈ shifted_q)
+        @test isapprox(q, shifted_q; atol = 0.2)
     end
 
     @testset "algebra" begin
@@ -46,6 +50,13 @@
         @test isapprox(
             Cashflow(one_big, one_big),
             Cashflow(one_big + delta_big, one_big + delta_big); atol = big"1.0e-19"
+        )
+
+        @test !(
+            Cashflow(1_000_000_000, 1) ≈ Cashflow(1_000_000_001, 1)
+        )
+        @test isapprox(
+            Cashflow(1_000_000_000, 1), Cashflow(1_000_000_001, 1); atol = 1
         )
     end
 
