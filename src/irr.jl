@@ -53,7 +53,7 @@ function _is_irr_root(r, cashflows, times, M, t0)
         scale += abs(term)
     end
     return isfinite(residual) && isfinite(scale) && !iszero(scale) &&
-           abs(residual) ≤ sqrt(eps(Float64)) * scale
+        abs(residual) ≤ sqrt(eps(Float64)) * scale
 end
 
 function irr_robust(cashflows, times)
@@ -96,7 +96,7 @@ function _is_irr_root(r, cashflows::AbstractVector{C}, M, t0) where {C <: Cashfl
         scale += abs(term)
     end
     return isfinite(residual) && isfinite(scale) && !iszero(scale) &&
-           abs(residual) ≤ sqrt(eps(Float64)) * scale
+        abs(residual) ≤ sqrt(eps(Float64)) * scale
 end
 
 function irr_robust(cashflows::AbstractVector{C}) where {C <: Cashflow}
