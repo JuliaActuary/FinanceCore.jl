@@ -16,7 +16,7 @@ Periodic(0.1, 1)
 ```
 
 # Solver notes
-First tries Newton's method (fast). If Newton does not converge, falls back to a robust root-finding search in continuous rate space over `[-5, 3]` (approximately `[-0.993, 19.1]` in periodic rate). When the fallback finds multiple roots, returns the one nearest zero.
+First tries Newton's method (fast). If Newton does not converge, falls back to a robust root-finding search in continuous rate space over `[-5, 3]` (approximately `[-0.993, 19.1]` in periodic rate). Fallback roots are residual-validated; when multiple roots remain, returns the one nearest zero.
 """
 function internal_rate_of_return(cashflows::AbstractVector{<:Real})
     return internal_rate_of_return(cashflows, 0:(length(cashflows) - 1))
@@ -27,12 +27,7 @@ function internal_rate_of_return(cashflows::AbstractVector{C}) where {C <: Cashf
     # revert to a more robust method
 
     v = irr_newton(cashflows)
-
-    if isnan(rate(v))
-        return irr_robust(cashflows)
-    else
-        return v
-    end
+    return isnothing(v) ? irr_robust(cashflows) : v
 end
 
 function internal_rate_of_return(cashflows, times)
@@ -40,12 +35,7 @@ function internal_rate_of_return(cashflows, times)
     # revert to a more robust method
 
     v = irr_newton(cashflows, times)
-
-    if isnan(rate(v))
-        return irr_robust(cashflows, times)
-    else
-        return v
-    end
+    return isnothing(v) ? irr_robust(cashflows, times) : v
 end
 
 irr_robust(cashflows) = irr_robust(cashflows, 0:(length(cashflows) - 1))
@@ -54,16 +44,40 @@ irr_robust(cashflows) = irr_robust(cashflows, 0:(length(cashflows) - 1))
 # `expm1` preserves nominal rates too small for `exp(r) - 1` to represent.
 _periodic_from_force(r) = Periodic(expm1(r), 1)
 
+function _is_irr_root(r, cashflows, times, M, t0)
+    residual = zero(r)
+    scale = zero(r)
+    for (cf, t) in zip(cashflows, times)
+        term = cf / M * exp(-r * (t - t0))
+        residual += term
+        scale += abs(term)
+    end
+    return isfinite(residual) && isfinite(scale) && !iszero(scale) &&
+           abs(residual) ≤ sqrt(eps(Float64)) * scale
+end
+
 function irr_robust(cashflows, times)
+    # Cashflows with only one sign cannot have a finite IRR. This check belongs on
+    # the fallback path so ordinary Newton-convergent calls do not pay for a scan.
+    has_positive = any(>(0), cashflows)
+    has_negative = any(<(0), cashflows)
+    has_positive && has_negative || return nothing
+
     # IRR is scale-invariant; normalizing keeps f(r) in O(1) range
     # so that find_zeros can reliably distinguish roots from noise.
     M = maximum(abs, cashflows)
     iszero(M) && return nothing
-    normalized = cashflows ./ M
-    f(r) = sum(cf * exp(-r * t) for (cf, t) in zip(normalized, times))
+    # Shifting every timepoint by the same amount multiplies NPV by a positive
+    # factor and therefore preserves its roots. It also prevents all terms from
+    # underflowing together when the first timepoint is greater than zero.
+    t0 = minimum(i -> times[i], eachindex(cashflows))
     # operate in continuous rate space to avoid the singularity at i = -1
     # in periodic space (where (1+i)^t is undefined for fractional t)
+    f(r) = sum(
+        cf / M * exp(-r * (t - t0)) for (cf, t) in zip(cashflows, times)
+    )
     roots = Roots.find_zeros(f, -5.0, 3.0)
+    filter!(r -> _is_irr_root(r, cashflows, times, M, t0), roots)
 
     # short circuit and return nothing if no roots found
     isempty(roots) && return nothing
@@ -73,11 +87,29 @@ function irr_robust(cashflows, times)
 
 end
 
+function _is_irr_root(r, cashflows::AbstractVector{C}, M, t0) where {C <: Cashflow}
+    residual = zero(r)
+    scale = zero(r)
+    for cf in cashflows
+        term = amount(cf) / M * exp(-r * (timepoint(cf) - t0))
+        residual += term
+        scale += abs(term)
+    end
+    return isfinite(residual) && isfinite(scale) && !iszero(scale) &&
+           abs(residual) ≤ sqrt(eps(Float64)) * scale
+end
+
 function irr_robust(cashflows::AbstractVector{C}) where {C <: Cashflow}
+    has_positive = any(cf -> amount(cf) > 0, cashflows)
+    has_negative = any(cf -> amount(cf) < 0, cashflows)
+    has_positive && has_negative || return nothing
+
     M = maximum(cf -> abs(amount(cf)), cashflows)
     iszero(M) && return nothing
-    f(r) = sum(amount(cf) / M * exp(-r * timepoint(cf)) for cf in cashflows)
+    t0 = minimum(timepoint, cashflows)
+    f(r) = sum(amount(cf) / M * exp(-r * (timepoint(cf) - t0)) for cf in cashflows)
     roots = Roots.find_zeros(f, -5.0, 3.0)
+    filter!(r -> _is_irr_root(r, cashflows, M, t0), roots)
 
     # short circuit and return nothing if no roots found
     isempty(roots) && return nothing
@@ -98,6 +130,7 @@ function irr_newton(cashflows, times)
         1.0e-9,
         100
     )
+    isnothing(r) && return nothing
     return _periodic_from_force(r)
 
 end
@@ -110,6 +143,7 @@ function irr_newton(cashflows::AbstractVector{C}) where {C <: Cashflow}
         1.0e-9,
         100
     )
+    isnothing(r) && return nothing
     return _periodic_from_force(r)
 
 end
@@ -186,25 +220,23 @@ const irr = internal_rate_of_return
 # modified from
 # Algorithms for Optimization, Mykel J. Kochenderfer and Tim A. Wheeler, pg 88
 function __newtons_method1D_irr(cashflows, times, x, ε, k_max)
-    k = 1
-    Δ = Inf
-    while abs(Δ) > ε && k ≤ k_max
-        # @show x,H(x),  ∇f(x)
+    for _ in 1:k_max
         Δ = __pv_div_pv′(x, cashflows, times)
+        isfinite(Δ) || return nothing
         x -= Δ
-        k += 1
+        isfinite(x) || return nothing
+        abs(Δ) ≤ ε && return x
     end
-    return x
+    return nothing
 end
 
 function __newtons_method1D_irr(cashflows::AbstractVector{C}, x, ε, k_max) where {C <: Cashflow}
-    k = 1
-    Δ = Inf
-    while abs(Δ) > ε && k ≤ k_max
-        # @show x,H(x),  ∇f(x)
+    for _ in 1:k_max
         Δ = __pv_div_pv′(x, cashflows)
+        isfinite(Δ) || return nothing
         x -= Δ
-        k += 1
+        isfinite(x) || return nothing
+        abs(Δ) ≤ ε && return x
     end
-    return x
+    return nothing
 end

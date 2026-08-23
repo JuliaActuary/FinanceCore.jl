@@ -40,5 +40,6 @@ using LoopVectorization
     @test irr([-100, 110]) ≈ Periodic(0.1, 1)
     @test irr([-100.0, 110.0], [0.0, 1.0]) ≈ Periodic(0.1, 1)
     @test isnothing(irr([0.0, 0.0, 0.0]))
+    @test isnothing(irr([100.0, 100.0], [1.0, 1.0]))
     @test irr([Cashflow(-100.0, 0.0), Cashflow(110.0, 1.0)]) ≈ Periodic(0.1, 1)
 end
