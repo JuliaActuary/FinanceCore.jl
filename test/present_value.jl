@@ -1,4 +1,8 @@
 @testset "pv" begin
+    @test_throws ArgumentError pv(0.05, Float64[])
+    @test_throws ArgumentError pv(0.05, Float64[], Float64[])
+    @test_throws ArgumentError pv(0.05, Cashflow{Float64, Float64}[])
+
     cf = [100, 100]
 
     @test pv(0.05, cf) ≈ cf[1] / 1.05 + cf[2] / 1.05^2

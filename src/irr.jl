@@ -6,6 +6,7 @@
 Calculate the internal rate of return with given timepoints. If no timepoints given, assumes equally spaced cashflows starting at time zero (0, 1, 2, ..., n).
 
 Returns a `Periodic(rate, 1)` `Rate`, or `nothing` if no root is found. Get the scalar rate by calling `rate()` on the result.
+Empty cashflow collections throw `ArgumentError`.
 
 # Example
 ```julia-repl
@@ -23,6 +24,7 @@ function internal_rate_of_return(cashflows::AbstractVector{<:Real})
 end
 
 function internal_rate_of_return(cashflows::Vector{C}) where {C <: Cashflow}
+    isempty(cashflows) && throw(ArgumentError("cashflows must not be empty"))
     # first try to quickly solve with newton's method, otherwise
     # revert to a more robust method
 
@@ -36,6 +38,7 @@ function internal_rate_of_return(cashflows::Vector{C}) where {C <: Cashflow}
 end
 
 function internal_rate_of_return(cashflows, times)
+    isempty(cashflows) && throw(ArgumentError("cashflows must not be empty"))
     # first try to quickly solve with newton's method, otherwise
     # revert to a more robust method
 
