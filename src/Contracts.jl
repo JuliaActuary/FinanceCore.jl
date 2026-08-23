@@ -104,9 +104,9 @@ timepoint(x::R, t) where {R <: Real} = t
 __time_isapprox(a, b; kwargs...) = isapprox(a, b; kwargs...)
 __time_isapprox(a::Dates.Date, b::Dates.Date; kwargs...) = a == b
 
-function Base.isapprox(a::C, b::D; atol::Real = 0, rtol::Real = atol > 0 ? 0 : √eps()) where {C <: Cashflow, D <: Cashflow}
-    amt = isapprox(amount(a), amount(b); atol, rtol)
-    return amt && __time_isapprox(timepoint(a), timepoint(b); atol, rtol)
+function Base.isapprox(a::C, b::D; kwargs...) where {C <: Cashflow, D <: Cashflow}
+    amt = isapprox(amount(a), amount(b); kwargs...)
+    return amt && __time_isapprox(timepoint(a), timepoint(b); kwargs...)
 end
 
 function Base.:+(c1::C, c2::D) where {C <: Cashflow, D <: Cashflow}

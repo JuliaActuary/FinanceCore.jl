@@ -33,6 +33,22 @@
         @test pv(0.05, cf11) ≈ 1.0 / 1.05
     end
 
+    @testset "isapprox numeric precision" begin
+        @test Cashflow(1.0f0, 1.0f0) ≈ Cashflow(1.0f0 + 1.0f-5, 1.0f0 + 1.0f-5)
+
+        one_big = big"1.0"
+        delta_big = big"1.0e-20"
+        @test !(
+            Cashflow(one_big, one_big) ≈
+                Cashflow(one_big + delta_big, one_big + delta_big)
+        )
+
+        @test isapprox(
+            Cashflow(one_big, one_big),
+            Cashflow(one_big + delta_big, one_big + delta_big); atol = big"1.0e-19"
+        )
+    end
+
     @testset "Composite" begin
         cp = Composite(cf11, Cashflow(2, 3))
         @test maturity(cp) == 3
