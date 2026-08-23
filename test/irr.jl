@@ -27,6 +27,13 @@ p(rate) = Periodic(rate, 1)
 
     @test irr([-100, 100]) ≈ p(0.0)
     @test isnothing(irr([100, 100])) # answer is -1, but search range won't find it
+    @test isnothing(irr([100.0, 100.0], [1.0, 1.0]))
+    @test isnothing(irr([-100.0, -100.0], [1.0, 1.0]))
+    @test isnothing(irr(Cashflow.([100.0, 100.0], [1.0, 1.0])))
+
+    # A common shift in time does not change the IRR. In particular, it must not
+    # let the robust solver mistake simultaneous underflow for a finite root.
+    @test irr([-100.0, 110.0], [1000.0, 1001.0]) ≈ p(0.1)
 
     # test the unsolvable
     @test isnothing(irr([-1.0e8, 0.0, 0.0, 0.0], 0:3))
