@@ -25,7 +25,9 @@ p(rate) = Periodic(rate, 1)
     @test irr(cfs, 0:50) ≈ p(0.3176680627111823)
 
 
-    @test irr([-100, 100]) ≈ p(0.0)
+    @test irr([-100, 100]) ≈ p(0.0) atol = eps()
+    @test rate(FinanceCore._periodic_from_force(1.0e-16)) == 1.0e-16
+    @test rate(irr([-1.0, 1.0 + 1.0e-10])) ≈ 1.0e-10 rtol = 1.0e-6
     @test isnothing(irr([100, 100])) # answer is -1, but search range won't find it
 
     # test the unsolvable
