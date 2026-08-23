@@ -25,7 +25,8 @@ p(rate) = Periodic(rate, 1)
     @test irr(cfs, 0:50) ≈ p(0.3176680627111823)
 
 
-    @test irr([-100, 100]) ≈ p(0.0)
+    @test irr([-100, 100]) ≈ p(0.0) atol = eps()
+    @test rate(irr([-1.0, 1.0 + 1.0e-12])) ≈ 1.0e-12 rtol = 1.0e-4
     @test isnothing(irr([100, 100])) # answer is -1, but search range won't find it
 
     # test the unsolvable
