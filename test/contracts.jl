@@ -38,11 +38,15 @@
 
         one_big = big"1.0"
         delta_big = big"1.0e-20"
-        @test !(Cashflow(one_big, one_big) ≈
-            Cashflow(one_big + delta_big, one_big + delta_big))
+        @test !(
+            Cashflow(one_big, one_big) ≈
+                Cashflow(one_big + delta_big, one_big + delta_big)
+        )
 
-        @test isapprox(Cashflow(one_big, one_big),
-            Cashflow(one_big + delta_big, one_big + delta_big); atol = big"1.0e-19")
+        @test isapprox(
+            Cashflow(one_big, one_big),
+            Cashflow(one_big + delta_big, one_big + delta_big); atol = big"1.0e-19"
+        )
     end
 
     @testset "Composite" begin
