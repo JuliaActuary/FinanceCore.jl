@@ -1,34 +1,29 @@
 module FinanceCoreLoopVectorizationExt
 
 using FinanceCore
-using FinanceCore: TurboBackend, VECTORIZATION_BACKEND, Cashflow, amount, timepoint
+using FinanceCore: TurboBackend
 using LoopVectorization
 
-# Set the backend to TurboBackend when this extension loads
-function __init__()
-    return VECTORIZATION_BACKEND[] = TurboBackend()
-end
+const TurboFloat = Union{Float32, Float64}
+
+FinanceCore._vectorization_backend(
+    r::T,
+    cashflows::StridedVector{T},
+    times::StridedVector{T},
+) where {T <: TurboFloat} = TurboBackend()
 
 # @turbo implementation for TurboBackend
-function FinanceCore.__pv_div_pv′(::TurboBackend, r, cashflows, times)
+function FinanceCore.__pv_div_pv′(
+    ::TurboBackend,
+    r::T,
+    cashflows::StridedVector{T},
+    times::StridedVector{T},
+) where {T <: TurboFloat}
     n = 0.0
     d = 0.0
-    @turbo warn_check_args = false for i in eachindex(cashflows)
+    @turbo for i in eachindex(cashflows)
         cf = cashflows[i]
         t = times[i]
-        a = cf * exp(-r * t)
-        n += a
-        d += a * -t
-    end
-    return n / d
-end
-
-function FinanceCore.__pv_div_pv′(::TurboBackend, r, cashflows::Vector{C}) where {C <: Cashflow}
-    n = 0.0
-    d = 0.0
-    @turbo warn_check_args = false for i in eachindex(cashflows)
-        cf = amount(cashflows[i])
-        t = timepoint(cashflows[i])
         a = cf * exp(-r * t)
         n += a
         d += a * -t

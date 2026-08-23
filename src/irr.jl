@@ -115,22 +115,22 @@ abstract type VectorizationBackend end
 struct SimdBackend <: VectorizationBackend end
 struct TurboBackend <: VectorizationBackend end
 
-# Global backend setting - extensions can change this
-const VECTORIZATION_BACKEND = Ref{VectorizationBackend}(SimdBackend())
+_vectorization_backend(r, cashflows, times) = SimdBackend()
+_vectorization_backend(r, cashflows::Vector{C}) where {C <: Cashflow} = SimdBackend()
 
 # an internal function which calculates the
 # present value and it's derivative in one pass
 # for use in newton's method
 #
-# Dispatches to the appropriate backend. When LoopVectorization
-# is loaded, the extension sets VECTORIZATION_BACKEND to TurboBackend()
-# and provides a faster @turbo-based implementation.
+# Dispatches to the appropriate backend based on the input types. The
+# LoopVectorization extension opts supported dense floating-point arrays into its
+# turbo kernel without changing process-global state.
 function __pv_div_pv′(r, cashflows, times)
-    return __pv_div_pv′(VECTORIZATION_BACKEND[], r, cashflows, times)
+    return __pv_div_pv′(_vectorization_backend(r, cashflows, times), r, cashflows, times)
 end
 
 function __pv_div_pv′(r, cashflows::Vector{C}) where {C <: Cashflow}
-    return __pv_div_pv′(VECTORIZATION_BACKEND[], r, cashflows)
+    return __pv_div_pv′(_vectorization_backend(r, cashflows), r, cashflows)
 end
 
 # Base @simd implementation
