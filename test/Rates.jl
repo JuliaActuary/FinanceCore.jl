@@ -96,7 +96,7 @@
         end
 
         # arithmetic in nominal space no longer accretes conversion noise
-        @test rate(Periodic(0.01, 2) + Periodic(0.04, 2)) ≈ 0.05 rtol = 4 * eps()
+        @test rate(Periodic(0.01, 2) + 0.04) ≈ 0.05 rtol = 4 * eps()
         @test rate(Periodic(0.04, 2) - Periodic(0.01, 2)) ≈ 0.03 rtol = 4 * eps()
 
         # Float32 values stay Float32 and round-trip at Float32 precision
@@ -307,6 +307,14 @@
 
             @test p(a) + c(b) ≈ p(a) + Periodic(1)(c(b))
             @test c(a) + p(b) ≈ c(a) + Continuous()(p(b))
+
+            semiannual = Periodic(0.04, 2)
+            annual = Periodic(0.03, 1)
+            sum_rate = semiannual + annual
+            @test sum_rate isa Rate{<:Any, Continuous}
+            @test rate(sum_rate) == rate(Continuous(semiannual)) + rate(Continuous(annual))
+            @test semiannual + annual == annual + semiannual
+            @test semiannual + Continuous(annual) == Continuous(semiannual) + annual
         end
 
         @testset "multiplication" begin
@@ -346,7 +354,7 @@
             r = Periodic(0.04, 2) - Periodic(0.01, 2)
             @test r ≈ Periodic(0.03, 2)
             r = Periodic(0.04, 2) + Periodic(0.01, 2)
-            @test r ≈ Periodic(0.05, 2)
+            @test r == Continuous(Periodic(0.04, 2)) + Continuous(Periodic(0.01, 2))
 
             @test Periodic(0.04, 1) > Periodic(0.03, 2)
             @test Periodic(0.03, 1) < Periodic(0.04, 2)
