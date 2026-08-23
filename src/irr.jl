@@ -16,7 +16,7 @@ Periodic(0.1, 1)
 ```
 
 # Solver notes
-First tries Newton's method (fast). If Newton does not converge, falls back to a robust root-finding search in continuous rate space over `[-5, 3]` (approximately `[-0.993, 19.1]` in periodic rate). When the fallback finds multiple roots, returns the one nearest zero.
+First tries Newton's method (fast). If Newton does not converge, falls back to a robust root-finding search in continuous rate space over `[-5, 3]` (approximately `[-0.993, 19.1]` in periodic rate). Fallback roots are residual-validated; when multiple roots remain, returns the one nearest zero.
 """
 function internal_rate_of_return(cashflows::AbstractVector{<:Real})
     return internal_rate_of_return(cashflows, 0:(length(cashflows) - 1))
@@ -30,7 +30,7 @@ internal_rate_of_return(cashflows::Vector{<:Cashflow}) = internal_rate_of_return
 # newton's method first (fast); fall back to a robust search if it doesn't converge
 function internal_rate_of_return(cashflows, times)
     v = irr_newton(cashflows, times)
-    return isnan(rate(v)) ? irr_robust(cashflows, times) : v
+    return isnothing(v) ? irr_robust(cashflows, times) : v
 end
 
 # Per-element accessors that unify the two cashflow representations without copying:
@@ -41,15 +41,41 @@ end
 @inline _tim(cashflows, times, i) = times[i]
 @inline _tim(cashflows::AbstractVector{<:Cashflow}, ::Nothing, i) = timepoint(cashflows[i])
 
+function _is_irr_root(r, cashflows, times, M, t0)
+    residual = zero(r)
+    scale = zero(r)
+    for i in eachindex(cashflows)
+        term = _amt(cashflows, i) / M * exp(-r * (_tim(cashflows, times, i) - t0))
+        residual += term
+        scale += abs(term)
+    end
+    return isfinite(residual) && isfinite(scale) && !iszero(scale) &&
+        abs(residual) ≤ sqrt(eps(Float64)) * scale
+end
+
 function irr_robust(cashflows, times = nothing)
+    # Cashflows with only one sign cannot have a finite IRR. This check belongs on
+    # the fallback path so ordinary Newton-convergent calls do not pay for a scan.
+    has_positive = any(i -> _amt(cashflows, i) > 0, eachindex(cashflows))
+    has_negative = any(i -> _amt(cashflows, i) < 0, eachindex(cashflows))
+    has_positive && has_negative || return nothing
+
     # IRR is scale-invariant; normalizing keeps f(r) in O(1) range
     # so that find_zeros can reliably distinguish roots from noise.
     M = maximum(i -> abs(_amt(cashflows, i)), eachindex(cashflows))
     iszero(M) && return nothing
+    # Shifting every timepoint by the same amount multiplies NPV by a positive
+    # factor and therefore preserves its roots. It also prevents all terms from
+    # underflowing together when the first timepoint is greater than zero.
+    t0 = minimum(i -> _tim(cashflows, times, i), eachindex(cashflows))
     # operate in continuous rate space to avoid the singularity at i = -1
     # in periodic space (where (1+i)^t is undefined for fractional t)
-    f(r) = sum(_amt(cashflows, i) / M * exp(-r * _tim(cashflows, times, i)) for i in eachindex(cashflows))
+    f(r) = sum(
+        _amt(cashflows, i) / M * exp(-r * (_tim(cashflows, times, i) - t0))
+            for i in eachindex(cashflows)
+    )
     roots = Roots.find_zeros(f, -5.0, 3.0)
+    filter!(r -> _is_irr_root(r, cashflows, times, M, t0), roots)
 
     # short circuit and return nothing if no roots found
     isempty(roots) && return nothing
@@ -60,6 +86,7 @@ end
 function irr_newton(cashflows, times = nothing)
     # use newton's method with hand-coded derivative
     r = __newtons_method1D_irr(cashflows, times, 0.001, 1.0e-9, 100)
+    isnothing(r) && return nothing
     return Periodic(exp(r) - 1, 1)
 end
 
@@ -109,13 +136,12 @@ const irr = internal_rate_of_return
 # modified from
 # Algorithms for Optimization, Mykel J. Kochenderfer and Tim A. Wheeler, pg 88
 function __newtons_method1D_irr(cashflows, times, x, ε, k_max)
-    k = 1
-    Δ = Inf
-    while abs(Δ) > ε && k ≤ k_max
-        # @show x,H(x),  ∇f(x)
+    for _ in 1:k_max
         Δ = __pv_div_pv′(x, cashflows, times)
+        isfinite(Δ) || return nothing
         x -= Δ
-        k += 1
+        isfinite(x) || return nothing
+        abs(Δ) ≤ ε && return x
     end
-    return x
+    return nothing
 end
