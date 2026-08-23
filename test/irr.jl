@@ -3,6 +3,10 @@ p(rate) = Periodic(rate, 1)
 
 @testset "irr" begin
 
+    @test_throws ArgumentError irr(Float64[])
+    @test_throws ArgumentError irr(Float64[], Float64[])
+    @test_throws ArgumentError irr(Cashflow{Float64, Float64}[])
+
     v = [-70000, 12000, 15000, 18000, 21000, 26000]
 
     # per Excel (example comes from Excel help text)

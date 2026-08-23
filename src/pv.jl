@@ -3,6 +3,7 @@
 
 Discount the `cashflows` vector at the given `yield_model`,  with the cashflows occurring
 at the times specified in `timepoints`. If no `timepoints` given, assumes that cashflows happen at the indices of the cashflows.
+Empty cashflow collections throw `ArgumentError`.
 
 If your timepoints are dates, you can convert them into a floating point representation of the time interval using DayCounts.jl.
 
@@ -23,11 +24,13 @@ julia> present_value(Continuous(0.1), [10,20])
 
 """
 function present_value(r, x, times)
+    isempty(x) && throw(ArgumentError("cashflows must not be empty"))
     # previously tried LoopVectorization.vmapreduce, but it didn't play well with
     # dual numbers when differentiated
     return mapreduce((xi, ti) -> present_value(r, xi, ti), +, x, times)
 end
 function present_value(r, x)
+    isempty(x) && throw(ArgumentError("cashflows must not be empty"))
     return mapreduce(px -> present_value(r, last(px), first(px)), +, pairs(x))
 end
 
