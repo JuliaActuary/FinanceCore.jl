@@ -243,6 +243,12 @@
         @test_throws ArgumentError Periodic(-2)
         @test_throws ArgumentError Periodic(0.05, 0)
         @test_throws ArgumentError Periodic(0.05, -1)
+
+        for frequency in (Int8(2), UInt16(2), Int32(2), big(2))
+            @test Periodic(frequency) == Periodic(2)
+            @test Rate(1, Periodic(frequency)) ≈ Periodic(1.0, 2)
+            @test Periodic(Continuous(0.03), frequency) ≈ Periodic(Continuous(0.03), 2)
+        end
     end
 
     @testset "discounting and accumulation" for t in [-1.3, 2.46, 6.7]
