@@ -14,25 +14,29 @@ concurrency:
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 jobs:
   test:
-    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
+    name: Julia ${{ matrix.version }} - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.version == 'pre' }}
     strategy:
       fail-fast: false
       matrix:
-        version:
-          - '1.10'
-          - '1'
-        os:
-          - ubuntu-latest
-        arch:
-          - x64
+        include:
+          - os: ubuntu-latest
+            version: 'min'
+          - os: ubuntu-latest
+            version: '1'
+          - os: macOS-latest
+            version: '1'
+          - os: windows-latest
+            version: '1'
+          - os: ubuntu-latest
+            version: 'pre'
     steps:
       - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v1
+      - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
-          arch: ${{ matrix.arch }}
-      - uses: julia-actions/cache@v1
+      - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
       - uses: julia-actions/julia-processcoverage@v1
@@ -40,18 +44,31 @@ jobs:
         with:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}
-      - uses: julia-actions/julia-downgrade-compat@v1
-        if: ${{ matrix.version == '1.10' }}
+  downgrade:
+    # Tests the lower bounds declared in [compat] by pinning dependencies to
+    # their oldest allowed versions before building.
+    name: Downgrade
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
         with:
-          skip: Pkg, TOML
+          version: 'min'
+      - uses: julia-actions/julia-downgrade-compat@v1
+        with:
+          skip: Dates
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
   docs:
     name: Documentation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v1
+      - uses: julia-actions/setup-julia@v2
         with:
           version: '1'
+      - uses: julia-actions/cache@v2
       - run: |
           julia --project=docs -e '
             using Pkg
