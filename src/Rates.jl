@@ -437,7 +437,10 @@ forward(rate::T, from, to) where {T <: Rate} = rate
     +(T<:Real, Rate)
     +(Rate, Rate)
 
-The addition of a rate with a number will inherit the type of the `Rate`, or the first argument's type if both are `Rate`s.
+Adding a scalar changes the nominal rate in the existing compounding convention.
+Adding two `Rate`s adds their continuously compounded forces and returns a
+`Continuous` rate, making the operation independent of argument order and
+compounding representation.
 
 # Examples
 
@@ -463,12 +466,8 @@ function Base.:+(a::Real, b::Rate{N, T}) where {N, T <: Periodic}
     return Periodic(rate(b) + a, b.compounding.frequency)
 end
 
-function Base.:+(a::T, b::U) where {T <: Rate, U <: Rate}
-    a_rate = rate(a)
-    b_rate = rate(convert(a.compounding, b))
-    r = Rate(a_rate + b_rate, a.compounding)
-    return r
-end
+Base.:+(a::T, b::U) where {T <: Rate, U <: Rate} =
+    Continuous(a.continuous_value + b.continuous_value)
 
 """
     -(Rate, T<:Real)
