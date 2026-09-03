@@ -87,6 +87,7 @@ end
 @testset "irr with cashflows" begin
     c = Cashflow.([-10, 0, 0, 15], [0, 1, 2, 3])
     @test irr(c) ≈ Periodic((15 / 10)^(1 / 3) - 1, 1)
+    @test irr(@view(c[begin:end])) ≈ Periodic((15 / 10)^(1 / 3) - 1, 1)
 
     # issue #28
     cfs = [-8.728037307132952e7, 3.043754023830998e7, 2.963004184784189e7, 2.8803030748755097e7, 2.7956912111811966e7, 2.7092182051244527e7, 2.6209069543806538e7, 2.5307964329840004e7, 2.438961041057478e7, 2.3455084653011695e7, 2.2505925520018265e7, 2.154395414765592e7, 2.0571076113065004e7, 1.958930608135183e7, 1.8600627464895025e7, 1.7606980923262402e7, 1.661046149512893e7, 1.561312825963898e7, 1.461760481586352e7, 1.3626801207410209e7, 1.2644733969499402e7, 1.1675393687299855e7, 1.0722720151658386e7, 9.79075673433771e6, 8.883278741880089e6, 8.004445298876338e6, 7.1588010859461725e6, 6.351121678665243e6, 5.585860320479795e6, 4.8673895159943625e6, 4.19908059495347e6, 3.583538247530099e6, 3.022766488834396e6, 2.5181072324190177e6, 2.0701053881076649e6, 1.6782921224664208e6, 1.3410605489291362e6, 1.0556643097527474e6, 818348.5357315112, 624147.9373214925, 467849.788997191, 344241.752520618, 248285.65630649775, 175235.5475426321, 120677.87174498942, 80759.09804678289, 52186.83400936739, 32211.057718402008, 18589.51907385164, 9540.782278174447, 3688.4015341755294]
@@ -102,4 +103,34 @@ end
     @test irr(cfs) ≈ Periodic(0.0323124165683919, 1)
 
 
+end
+
+@testset "irr numeric types" begin
+    cfs = Float32[-100, 110]
+    times = Float32[0, 1]
+    result = FinanceCore.__pv_div_pv′(FinanceCore.SimdBackend(), 0.1f0, cfs, times)
+    @test result isa Float32
+
+    cashflows = Cashflow.(cfs, times)
+    cashflow_result = FinanceCore.__pv_div_pv′(
+        FinanceCore.SimdBackend(),
+        0.1f0,
+        cashflows,
+    )
+    @test cashflow_result isa Float32
+
+    dual_cfs = [
+        ForwardDiff.Dual{Nothing}(-100.0, 1.0),
+        ForwardDiff.Dual{Nothing}(110.0, 0.0),
+    ]
+    dual_result = @inferred FinanceCore.__pv_div_pv′(
+        FinanceCore.SimdBackend(),
+        0.1,
+        dual_cfs,
+        0:1,
+    )
+    @test dual_result isa ForwardDiff.Dual
+
+    f(x) = rate(irr(x))
+    @test ForwardDiff.gradient(f, [-100.0, 110.0]) ≈ [0.011, 0.01]
 end

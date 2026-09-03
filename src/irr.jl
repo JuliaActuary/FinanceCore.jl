@@ -1,7 +1,7 @@
 """
     internal_rate_of_return(cashflows::AbstractVector)::Rate
     internal_rate_of_return(cashflows::AbstractVector, timepoints)::Rate
-    internal_rate_of_return(cashflows::Vector{<:Cashflow})::Rate
+    internal_rate_of_return(cashflows::AbstractVector{<:Cashflow})::Rate
 
 Calculate the internal rate of return with given timepoints. If no timepoints given, assumes equally spaced cashflows starting at time zero (0, 1, 2, ..., n).
 
@@ -22,7 +22,7 @@ function internal_rate_of_return(cashflows::AbstractVector{<:Real})
     return internal_rate_of_return(cashflows, 0:(length(cashflows) - 1))
 end
 
-function internal_rate_of_return(cashflows::Vector{C}) where {C <: Cashflow}
+function internal_rate_of_return(cashflows::AbstractVector{C}) where {C <: Cashflow}
     # first try to quickly solve with newton's method, otherwise
     # revert to a more robust method
 
@@ -73,7 +73,7 @@ function irr_robust(cashflows, times)
 
 end
 
-function irr_robust(cashflows::Vector{C}) where {C <: Cashflow}
+function irr_robust(cashflows::AbstractVector{C}) where {C <: Cashflow}
     M = maximum(cf -> abs(amount(cf)), cashflows)
     iszero(M) && return nothing
     f(r) = sum(amount(cf) / M * exp(-r * timepoint(cf)) for cf in cashflows)
@@ -102,7 +102,7 @@ function irr_newton(cashflows, times)
 
 end
 
-function irr_newton(cashflows::Vector{C}) where {C <: Cashflow}
+function irr_newton(cashflows::AbstractVector{C}) where {C <: Cashflow}
     # use newton's method with hand-coded derivative
     r = __newtons_method1D_irr(
         cashflows,
@@ -120,7 +120,7 @@ struct SimdBackend <: VectorizationBackend end
 struct TurboBackend <: VectorizationBackend end
 
 _vectorization_backend(r, cashflows, times) = SimdBackend()
-_vectorization_backend(r, cashflows::Vector{C}) where {C <: Cashflow} = SimdBackend()
+_vectorization_backend(r, cashflows::AbstractVector{C}) where {C <: Cashflow} = SimdBackend()
 
 # an internal function which calculates the
 # present value and it's derivative in one pass
@@ -133,14 +133,15 @@ function __pv_div_pv′(r, cashflows, times)
     return __pv_div_pv′(_vectorization_backend(r, cashflows, times), r, cashflows, times)
 end
 
-function __pv_div_pv′(r, cashflows::Vector{C}) where {C <: Cashflow}
+function __pv_div_pv′(r, cashflows::AbstractVector{C}) where {C <: Cashflow}
     return __pv_div_pv′(_vectorization_backend(r, cashflows), r, cashflows)
 end
 
 # Base @simd implementation
 function __pv_div_pv′(::SimdBackend, r, cashflows, times)
-    n = 0.0
-    d = 0.0
+    T = promote_type(typeof(r), eltype(cashflows), eltype(times))
+    n = zero(T)
+    d = zero(T)
     @inbounds @simd for i in eachindex(cashflows)
         cf = cashflows[i]
         t = times[i]
@@ -151,9 +152,19 @@ function __pv_div_pv′(::SimdBackend, r, cashflows, times)
     return n / d
 end
 
-function __pv_div_pv′(::SimdBackend, r, cashflows::Vector{C}) where {C <: Cashflow}
-    n = 0.0
-    d = 0.0
+_irr_accumulator_type(r, ::Type{<:Cashflow}) = typeof(r)
+function _irr_accumulator_type(r, ::Type{Cashflow{A, T}}) where {A, T}
+    return promote_type(typeof(r), A, T)
+end
+
+function __pv_div_pv′(
+        ::SimdBackend,
+        r,
+        cashflows::AbstractVector{C},
+    ) where {C <: Cashflow}
+    S = _irr_accumulator_type(r, C)
+    n = zero(S)
+    d = zero(S)
     @inbounds @simd for i in eachindex(cashflows)
         cf = amount(cashflows[i])
         t = timepoint(cashflows[i])
@@ -186,7 +197,7 @@ function __newtons_method1D_irr(cashflows, times, x, ε, k_max)
     return x
 end
 
-function __newtons_method1D_irr(cashflows::Vector{C}, x, ε, k_max) where {C <: Cashflow}
+function __newtons_method1D_irr(cashflows::AbstractVector{C}, x, ε, k_max) where {C <: Cashflow}
     k = 1
     Δ = Inf
     while abs(Δ) > ε && k ≤ k_max
