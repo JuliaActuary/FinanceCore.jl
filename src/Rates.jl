@@ -553,77 +553,14 @@ end
 
 
 """
-    <(x::Rate,y::Rate)
-
-Convert the second argument to the periodicity of the first and compare the scalar rate values to determine if the first argument has a lower force of interest than the second.
-
-# Examples
-
-```julia-repl
-julia> Periodic(0.03, 100) < Continuous(0.03)
-true
-```
-"""
-# Note: We define separate methods for each combination of Periodic/Continuous
-# instead of using `where {T <: Rate, U <: Rate}` to avoid compilation invalidations.
-# Abstract type bounds like `<: Rate` cause Julia to invalidate previously compiled
-# code for `<(::Any, ::Any)` signatures. Concrete type combinations don't have this issue.
-# See: https://juliadebug.github.io/SnoopCompile.jl/stable/tutorials/invalidations/
-function Base.:<(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2}
-    bc = convert(a.compounding, b)
-    return rate(a) < rate(bc)
-end
-function Base.:<(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2}
-    return rate(a) < rate(b)
-end
-function Base.:<(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2}
-    bc = convert(a.compounding, b)
-    return rate(a) < rate(bc)
-end
-function Base.:<(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2}
-    bc = convert(a.compounding, b)
-    return rate(a) < rate(bc)
-end
-
-"""
-    >(Rate,Rate)
-
-Convert the second argument to the periodicity of the first and compare the scalar rate values to determine if the first argument has a greater force of interest than the second.
-
-# Examples
-
-```julia-repl
-julia> Periodic(0.03, 100) > Continuous(0.03)
-false
-```
-"""
-# Note: We define separate methods for each combination of Periodic/Continuous
-# instead of using `where {T <: Rate, U <: Rate}` to avoid compilation invalidations.
-# See comment above for `<` methods.
-function Base.:>(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2}
-    bc = convert(a.compounding, b)
-    return rate(a) > rate(bc)
-end
-function Base.:>(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2}
-    return rate(a) > rate(b)
-end
-function Base.:>(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2}
-    bc = convert(a.compounding, b)
-    return rate(a) > rate(bc)
-end
-function Base.:>(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2}
-    bc = convert(a.compounding, b)
-    return rate(a) > rate(bc)
-end
-
-"""
     isless(a::Rate, b::Rate)
 
 Total ordering of `Rate`s by force of interest (the continuously compounded equivalent
 rate), consistent with the ordering used by `<` and `>`.
 
-Defining `isless` is what enables the order-based functions in `Base` — `sort`,
-`minimum`/`maximum`, `extrema`, `min`/`max`, and `clamp` — to work on `Rate`s.
+Defining `isless` supplies the `<` and `>` fallbacks and enables the order-based
+functions in `Base` — `sort`, `minimum`/`maximum`, `extrema`, `min`/`max`, and
+`clamp` — to work on `Rate`s.
 
 # Examples
 
@@ -643,9 +580,8 @@ Continuous(0.03)
 # frame-symmetric. Forwarding to `isless` on the underlying numbers inherits its total
 # order (e.g. NaN ordering).
 #
-# Note: We define separate methods for each combination of Periodic/Continuous
-# instead of using `where {T <: Rate, U <: Rate}` to avoid compilation invalidations.
-# See comment above for `<` methods.
+# Separate methods for each concrete compounding combination avoid invalidating
+# previously compiled generic `isless` code.
 function Base.isless(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2}
     return isless(a.continuous_value, b.continuous_value)
 end

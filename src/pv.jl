@@ -27,8 +27,19 @@ function present_value(r, x, times)
     # dual numbers when differentiated
     return mapreduce((xi, ti) -> present_value(r, xi, ti), +, x, times)
 end
+
+# Convert scalar rates once per collection rather than once per cashflow in the
+# scalar `present_value` method below.
+function present_value(r::Real, x::AbstractVector, times)
+    return present_value(Rate(r), x, times)
+end
+
 function present_value(r, x)
     return mapreduce(px -> present_value(r, last(px), first(px)), +, pairs(x))
+end
+
+function present_value(r::Real, x::AbstractVector)
+    return present_value(Rate(r), x)
 end
 
 # time is ignored in favor of the time inside the cashflow

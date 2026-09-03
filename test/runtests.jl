@@ -1,6 +1,7 @@
 using FinanceCore
 using Test
 using Dates
+using ForwardDiff
 import DayCounts
 
 
