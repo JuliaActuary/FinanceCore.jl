@@ -408,7 +408,7 @@ discount(rate, from, to) = discount(rate, to - from)
 
 Accumulate `rate` for a time `t` or for an interval `(from, to)`. If `rate` is not a `Rate`, it will be assumed to be a `Periodic` rate compounded once per period, i.e. `Periodic(rate,1)`. 
 
-    # Examples
+# Examples
 
 ```julia-repl
 julia> accumulation(0.03, 10)
@@ -537,19 +537,9 @@ function Base.:/(a::Rate{N, T}, b::Real) where {N, T <: Continuous}
     return Continuous(rate(a) / b)
 end
 
-# unclear if dividing a scalar by a rate should be allowed
-# function Base.:/(a::Real, b::Rate{N,T}) where {N<:Real,T<:Continuous}
-#     return Continuous( a / rate(b))
-# end
-
 function Base.:/(a::Rate{N, T}, b::Real) where {N, T <: Periodic}
     return Periodic(rate(a) / b, a.compounding.frequency)
 end
-
-# unclear if dividing a scalar by a rate should be allowed
-# function Base.:/(a::Real, b::Rate{N,T}) where {N<:Real, T<:Periodic}
-#     return Periodic(a / rate(b), b.compounding.frequency)
-# end
 
 
 """

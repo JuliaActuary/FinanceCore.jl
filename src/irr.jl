@@ -213,7 +213,7 @@ end
     irr(cashflows::vector)
     irr(cashflows::Vector, timepoints::Vector)
 
-    An alias for `internal_rate_of_return`.
+An alias for [`internal_rate_of_return`](@ref).
 """
 const irr = internal_rate_of_return
 
