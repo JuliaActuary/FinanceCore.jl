@@ -141,3 +141,50 @@ end
     f(x) = rate(irr(x))
     @test ForwardDiff.gradient(f, [-100.0, 110.0]) ≈ [0.011, 0.01]
 end
+
+@testset "IRR input representations share solver behavior" begin
+    cases = (
+        # Newton converges for ordinary numeric types and fractional timepoints.
+        ([-100, 110], [0, 1], 0.1),
+        (Float32[-100, 110], Float32[0, 1], 0.1),
+        (BigFloat[-100, 110], BigFloat[0, 1], 0.1),
+        ([-100.0, 121.0], [0 // 1, 1 // 2], 0.4641),
+        # Newton cannot finish these; the normalized fallback recovers the root.
+        ([-100.0, 110.0], [1000.0, 1001.0], 0.1),
+        ([-1.0e-300, 1.1e-300], [1.0e6, 1.0e6 + 1], 0.1),
+        ([-1.0e300, 1.1e300], [1000.0, 1001.0], 0.1),
+        # Multiple fallback roots: choose the one nearest zero in force space.
+        ([-100.0, 230.0, -132.0], [1000.0, 1001.0, 1002.0], 0.1),
+        # One-sign, all-zero, and mixed-sign streams without a root.
+        ([100.0, 100.0], [1.0, 1.0], nothing),
+        ([-100.0, -100.0], [1.0, 1.0], nothing),
+        ([0.0, 0.0], [0.0, 1.0], nothing),
+        ([-100.0, 100.0, -100.0], [0.0, 1.0, 2.0], nothing),
+    )
+    for (amounts, times, expected) in cases
+        flows = Cashflow.(amounts, times)
+        results = (
+            irr(amounts, times), irr(flows),
+            irr(@view(amounts[:]), @view(times[:])), irr(@view(flows[:])),
+        )
+        for result in results
+            if isnothing(expected)
+                @test isnothing(result)
+            else
+                @test rate(result) ≈ expected rtol = 1.0e-6
+            end
+        end
+    end
+
+    # Extra timepoints have always been ignored; they must not shift the fallback's origin.
+    @test irr([-100.0, 110.0], [1000.0, 1001.0, -1.0e6]) ≈ Periodic(0.1, 1)
+    @test_throws AssertionError irr([-100.0, 110.0], [0.0])
+
+    # AD must agree through both public input representations.
+    amounts = [-100.0, 110.0]
+    times = [0.0, 1.0]
+    numeric = ForwardDiff.gradient(a -> rate(irr(a, times)), amounts)
+    wrapped = ForwardDiff.gradient(a -> rate(irr(Cashflow.(a, times))), amounts)
+    @test numeric ≈ [0.011, 0.01]
+    @test wrapped ≈ numeric
+end
