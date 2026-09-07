@@ -22,33 +22,32 @@ function internal_rate_of_return(cashflows::AbstractVector{<:Real})
     return internal_rate_of_return(cashflows, 0:(length(cashflows) - 1))
 end
 
-function internal_rate_of_return(cashflows::AbstractVector{C}) where {C <: Cashflow}
-    # first try to quickly solve with newton's method, otherwise
-    # revert to a more robust method
-
-    v = irr_newton(cashflows)
-    return isnothing(v) ? irr_robust(cashflows) : v
+function internal_rate_of_return(cashflows::AbstractVector{<:Cashflow})
+    flows = ((amount(cf), timepoint(cf)) for cf in cashflows)
+    return _irr(r -> __pv_div_pv′(r, cashflows), flows)
 end
 
 function internal_rate_of_return(cashflows, times)
-    # first try to quickly solve with newton's method, otherwise
-    # revert to a more robust method
-
-    v = irr_newton(cashflows, times)
-    return isnothing(v) ? irr_robust(cashflows, times) : v
+    @assert length(cashflows) <= length(times)
+    return _irr(r -> __pv_div_pv′(r, cashflows, times), zip(cashflows, times))
 end
 
-irr_robust(cashflows) = irr_robust(cashflows, 0:(length(cashflows) - 1))
+# The input adapters are lazy: Newton keeps its representation-specific kernel,
+# while fallback policy operates on the same (amount, time) stream for both forms.
+function _irr(pv_ratio::F, flows) where {F}
+    r = _irr_newton(pv_ratio)
+    isnothing(r) && (r = _irr_robust(flows))
+    return isnothing(r) ? nothing : _periodic_from_force(r)
+end
 
 # Convert a force of interest from the solvers to an annual effective rate.
 # `expm1` preserves nominal rates too small for `exp(r) - 1` to represent.
 _periodic_from_force(r) = Periodic(expm1(r), 1)
 
-function _is_irr_root(r, cashflows, times, M, t0)
+function _is_irr_root(r, terms)
     residual = zero(r)
     scale = zero(r)
-    for (cf, t) in zip(cashflows, times)
-        term = cf / M * exp(-r * (t - t0))
+    for term in terms
         residual += term
         scale += abs(term)
     end
@@ -56,96 +55,23 @@ function _is_irr_root(r, cashflows, times, M, t0)
         abs(residual) ≤ sqrt(eps(Float64)) * scale
 end
 
-function irr_robust(cashflows, times)
-    # Cashflows with only one sign cannot have a finite IRR. This check belongs on
-    # the fallback path so ordinary Newton-convergent calls do not pay for a scan.
-    has_positive = any(>(0), cashflows)
-    has_negative = any(<(0), cashflows)
+function _irr_robust(flows)
+    # Cashflows with only one sign cannot have a finite IRR. Keep this scan on
+    # the fallback path so ordinary Newton-convergent calls do not pay for it.
+    has_positive = any(p -> first(p) > 0, flows)
+    has_negative = any(p -> first(p) < 0, flows)
     has_positive && has_negative || return nothing
 
-    # IRR is scale-invariant; normalizing keeps f(r) in O(1) range
-    # so that find_zeros can reliably distinguish roots from noise.
-    M = maximum(abs, cashflows)
-    iszero(M) && return nothing
-    # Shifting every timepoint by the same amount multiplies NPV by a positive
-    # factor and therefore preserves its roots. It also prevents all terms from
-    # underflowing together when the first timepoint is greater than zero.
-    t0 = minimum(i -> times[i], eachindex(cashflows))
-    # operate in continuous rate space to avoid the singularity at i = -1
-    # in periodic space (where (1+i)^t is undefined for fractional t)
-    f(r) = sum(
-        cf / M * exp(-r * (t - t0)) for (cf, t) in zip(cashflows, times)
-    )
-    roots = Roots.find_zeros(f, -5.0, 3.0)
-    filter!(r -> _is_irr_root(r, cashflows, times, M, t0), roots)
-
-    # short circuit and return nothing if no roots found
-    isempty(roots) && return nothing
-    # find the root nearest zero and convert back to periodic rate
-    min_i = argmin(abs.(roots))
-    return _periodic_from_force(roots[min_i])
-
-end
-
-function _is_irr_root(r, cashflows::AbstractVector{C}, M, t0) where {C <: Cashflow}
-    residual = zero(r)
-    scale = zero(r)
-    for cf in cashflows
-        term = amount(cf) / M * exp(-r * (timepoint(cf) - t0))
-        residual += term
-        scale += abs(term)
-    end
-    return isfinite(residual) && isfinite(scale) && !iszero(scale) &&
-        abs(residual) ≤ sqrt(eps(Float64)) * scale
-end
-
-function irr_robust(cashflows::AbstractVector{C}) where {C <: Cashflow}
-    has_positive = any(cf -> amount(cf) > 0, cashflows)
-    has_negative = any(cf -> amount(cf) < 0, cashflows)
-    has_positive && has_negative || return nothing
-
-    M = maximum(cf -> abs(amount(cf)), cashflows)
-    iszero(M) && return nothing
-    t0 = minimum(timepoint, cashflows)
-    f(r) = sum(amount(cf) / M * exp(-r * (timepoint(cf) - t0)) for cf in cashflows)
-    roots = Roots.find_zeros(f, -5.0, 3.0)
-    filter!(r -> _is_irr_root(r, cashflows, M, t0), roots)
-
-    # short circuit and return nothing if no roots found
-    isempty(roots) && return nothing
-    # find the root nearest zero and convert back to periodic rate
-    min_i = argmin(abs.(roots))
-    return _periodic_from_force(roots[min_i])
-
-end
-
-
-function irr_newton(cashflows, times)
-    @assert length(cashflows) <= length(times)
-    # use newton's method with hand-coded derivative
-    r = __newtons_method1D_irr(
-        cashflows,
-        times,
-        0.001,
-        1.0e-9,
-        100
-    )
-    isnothing(r) && return nothing
-    return _periodic_from_force(r)
-
-end
-
-function irr_newton(cashflows::AbstractVector{C}) where {C <: Cashflow}
-    # use newton's method with hand-coded derivative
-    r = __newtons_method1D_irr(
-        cashflows,
-        0.001,
-        1.0e-9,
-        100
-    )
-    isnothing(r) && return nothing
-    return _periodic_from_force(r)
-
+    # Scaling amounts and shifting the time origin preserve roots and prevent
+    # overflow/underflow from obscuring the residual. Both the root search and
+    # its acceptance check use the same discounted terms.
+    M = maximum(p -> abs(first(p)), flows)
+    t0 = minimum(last, flows)
+    terms(r) = (cf / M * exp(-r * (t - t0)) for (cf, t) in flows)
+    # Continuous-rate space avoids the periodic singularity at i = -1.
+    roots = Roots.find_zeros(r -> sum(terms(r)), -5.0, 3.0)
+    filter!(r -> _is_irr_root(r, terms(r)), roots)
+    return isempty(roots) ? nothing : argmin(abs, roots)
 end
 
 # Backend trait for vectorization strategy
@@ -217,22 +143,11 @@ An alias for [`internal_rate_of_return`](@ref).
 """
 const irr = internal_rate_of_return
 
-# modified from
-# Algorithms for Optimization, Mykel J. Kochenderfer and Tim A. Wheeler, pg 88
-function __newtons_method1D_irr(cashflows, times, x, ε, k_max)
+# Modified from Algorithms for Optimization, Kochenderfer and Wheeler, p. 88.
+# The evaluator selects the kernel; termination and failure policy are shared.
+function _irr_newton(pv_ratio, x = 0.001, ε = 1.0e-9, k_max = 100)
     for _ in 1:k_max
-        Δ = __pv_div_pv′(x, cashflows, times)
-        isfinite(Δ) || return nothing
-        x -= Δ
-        isfinite(x) || return nothing
-        abs(Δ) ≤ ε && return x
-    end
-    return nothing
-end
-
-function __newtons_method1D_irr(cashflows::AbstractVector{C}, x, ε, k_max) where {C <: Cashflow}
-    for _ in 1:k_max
-        Δ = __pv_div_pv′(x, cashflows)
+        Δ = pv_ratio(x)
         isfinite(Δ) || return nothing
         x -= Δ
         isfinite(x) || return nothing
