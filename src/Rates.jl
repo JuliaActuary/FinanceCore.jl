@@ -191,6 +191,9 @@ Rate(x, frequency::T) where {T <: Real} = isinf(frequency) ? Rate(x, Continuous(
     convert(cf::Frequency,r::Rate) 
 
 Returns a `Rate` with an equivalent discount but represented with a different compounding frequency.
+The stored continuous rate and its numeric type are preserved exactly. The nominal
+rate returned by `rate` can still round or overflow in the requested convention;
+discounting and accumulation use the preserved continuous rate.
 
 # Examples
 
@@ -206,30 +209,18 @@ Continuous(0.009995835646702353)
 ```
 """
 function Base.convert(cf::T, r::Rate{<:Any, <:Frequency}) where {T <: Frequency}
-    return convert.(cf, r, r.compounding)
+    return convert(cf, r, r.compounding)
 end
 
 function Base.convert(cf::T, r::R) where {R <: Real} where {T <: Frequency}
     return Rate(r, cf)
 end
 
-function Base.convert(to::Continuous, r, from::Continuous)
-    return r
-end
-
-function Base.convert(to::Periodic, r, from::Continuous)
-    # For Continuous rates, continuous_value equals the rate value
-    return Rate.(to.frequency * expm1(r.continuous_value / to.frequency), to)
-end
-
-function Base.convert(to::Continuous, r, from::Periodic)
-    # r.continuous_value already contains the equivalent continuous rate
-    return Rate.(r.continuous_value, to)
-end
-
-function Base.convert(to::Periodic, r, from::Periodic)
-    # r.continuous_value is the equivalent continuous rate, use it to convert directly
-    return Rate.(to.frequency * expm1(r.continuous_value / to.frequency), to)
+# Both conventions store the same force of interest. Only the quoting metadata
+# changes; a nominal-rate round trip would lose precision or saturate at -frequency.
+# Keep the three-argument dispatch so other Frequency types can define conversions.
+function Base.convert(to::T, r::Rate{N}, from::Union{Continuous, Periodic}) where {N, T <: Union{Continuous, Periodic}}
+    return Rate{N, T}(r.continuous_value, to)
 end
 
 function Continuous(r::Rate{<:Any, <:Periodic})

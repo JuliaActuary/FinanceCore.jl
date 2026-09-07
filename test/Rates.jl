@@ -68,6 +68,36 @@
 
     end
 
+    @testset "conversion preserves the force of interest" begin
+        originals = (
+            Continuous(-40.0), Continuous(1000.0), Continuous(-0.0), Continuous(NaN),
+            Periodic(-0.9, 1), Periodic(0.05, 2),
+            Continuous(0.03f0), Periodic(0.02f0, 12), Continuous(big"0.03"),
+        )
+        for original in originals, convention in (Continuous(), Periodic(1), Periodic(12))
+            converted = @inferred convert(convention, original)
+            @test compounding(converted) == convention
+            @test typeof(converted.continuous_value) === typeof(original.continuous_value)
+            @test isequal(converted, original)
+            @test hash(converted) == hash(original)
+            @test isequal(discount(converted, 0.001), discount(original, 0.001))
+            @test isequal(accumulation(converted, 0.001), accumulation(original, 0.001))
+            @test isequal(convert(compounding(original), converted), original)
+        end
+
+        # Nominal quoting can saturate while the underlying force remains finite.
+        negative = convert(Periodic(1), Continuous(-40.0))
+        @test rate(negative) == -1.0
+        @test discount(negative, 0.01) == exp(0.4)
+        positive = convert(Periodic(1), Continuous(1000.0))
+        @test rate(positive) == Inf
+        @test discount(positive, 0.001) == exp(-1.0)
+
+        # Conversion must retain AD partials, including when nominal quoting saturates.
+        f(r) = discount(convert(Periodic(1), Continuous(r)), 0.01)
+        @test ForwardDiff.derivative(f, -40.0) ≈ -0.01 * exp(0.4)
+    end
+
     @testset "rate() function returns original value" begin
         # Test rate() returns original value for Continuous
         c = Rate(0.05, Continuous())
