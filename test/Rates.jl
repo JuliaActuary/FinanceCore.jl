@@ -233,6 +233,8 @@
             (-40.0, -41.0), (1000.0, 1001.0),
         )
         conventions = (Continuous(), Periodic(1), Periodic(12))
+        # Conversion preserves the stored force and numeric type exactly, so the
+        # raw seeds remain the comparison oracle under every compounding convention.
         for ca in conventions, cb in conventions, (x, y) in pairs
             a = convert(ca, Continuous(x))
             b = convert(cb, Continuous(y))
