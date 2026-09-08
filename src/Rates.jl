@@ -534,14 +534,46 @@ end
 
 
 """
+    <(a::Rate, b::Rate)
+
+Compare the stored forces of interest with numeric `<`, regardless of compounding
+convention. NaN is unordered and signed zeros compare equal. Use `isless` for a
+total sorting order.
+"""
+# Keep concrete compounding combinations, as for isless, to avoid invalidating
+# previously compiled generic comparison code. Numeric types remain independent.
+function Base.:<(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2}
+    return a.continuous_value < b.continuous_value
+end
+function Base.:<(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2}
+    return a.continuous_value < b.continuous_value
+end
+function Base.:<(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2}
+    return a.continuous_value < b.continuous_value
+end
+function Base.:<(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2}
+    return a.continuous_value < b.continuous_value
+end
+
+"""
+    >(a::Rate, b::Rate)
+
+Compare the stored forces of interest using `b < a`.
+"""
+Base.:>(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2} = b < a
+Base.:>(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2} = b < a
+Base.:>(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2} = b < a
+Base.:>(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2} = b < a
+
+"""
     isless(a::Rate, b::Rate)
 
 Total ordering of `Rate`s by force of interest (the continuously compounded equivalent
-rate), consistent with the ordering used by `<` and `>`.
+rate). Unlike numeric `<` and `>`, this orders negative zero before positive zero
+and NaN after all other values.
 
-Defining `isless` supplies the `<` and `>` fallbacks and enables the order-based
-functions in `Base` — `sort`, `minimum`/`maximum`, `extrema`, `min`/`max`, and
-`clamp` — to work on `Rate`s.
+Defining `isless` enables sorting and order-based functions in `Base`, such as
+`sort`, `minimum`/`maximum`, and `extrema`, to work on `Rate`s.
 
 # Examples
 

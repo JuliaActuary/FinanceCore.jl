@@ -224,11 +224,41 @@
         @test hash(n1) == hash(n2)
     end
 
+    @testset "numeric comparisons across compounding conventions" begin
+        pairs = (
+            (NaN, 0.03), (NaN, NaN), (-0.0, 0.0), (-Inf, Inf),
+            (NaN32, 0.03), (big"NaN", 0.03f0), (-0.0f0, big"0.0"),
+            (0.03f0, 0.04), (big"0.03", 0.04f0), (0.5f0, big"0.5"),
+            (0, 1 // 2), (1 // 2, 0.5), (ForwardDiff.Dual(0.03, 1.0), 0.04),
+            (-40.0, -41.0), (1000.0, 1001.0),
+        )
+        conventions = (Continuous(), Periodic(1), Periodic(12))
+        for ca in conventions, cb in conventions, (x, y) in pairs
+            a = convert(ca, Continuous(x))
+            b = convert(cb, Continuous(y))
+            for op in (<, >, <=, >=)
+                @test op(a, b) == op(x, y)
+                @test op(b, a) == op(y, x)
+            end
+            @test isless(a, b) == isless(x, y)
+            @test isless(b, a) == isless(y, x)
+        end
+
+        # Compare forces even when nominal quotes have the opposite order.
+        a = Periodic(0.05, 1)
+        b = Continuous(0.049)
+        @test rate(a) > rate(b)
+        @test a < b
+        @test b > a
+        @test !(a > b)
+        @test !(b < a)
+    end
+
     @testset "isless and order-based Base functions" begin
         lo = Periodic(0.02, 2)
         hi = Continuous(0.05)
 
-        # isless orders by force of interest, consistent with < and >
+        # For ordinary finite values, isless agrees with numeric comparisons.
         @test isless(lo, hi)
         @test !isless(hi, lo)
         @test !isless(lo, lo)
@@ -250,6 +280,20 @@
 
         # mixed numeric types
         @test isless(Periodic(0.02f0, 2), Periodic(0.03, 2))
+
+        # Sorting retains a total order: negative zero precedes positive zero,
+        # and NaNs follow all other values, including infinity.
+        ordered = [
+            Continuous(-Inf), Periodic(-0.01f0, 12),
+            convert(Periodic(1), Continuous(-0.0)), Continuous(0.0f0),
+            Periodic(big"0.03", 2), Continuous(Inf),
+            convert(Periodic(12), Continuous(NaN)),
+        ]
+        rs = ordered[[7, 4, 5, 1, 3, 6, 2]]
+        @test isequal(sort(rs), ordered)
+        @test isequal(sort(rs; rev = true), reverse(ordered))
+        @test issorted(ordered)
+        @test isequal(rs[sortperm(rs)], ordered)
     end
 
     @testset "mixed numeric type isapprox" begin
