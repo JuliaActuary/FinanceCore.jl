@@ -532,16 +532,45 @@ function Base.:/(a::Rate{N, T}, b::Real) where {N, T <: Periodic}
     return Periodic(rate(a) / b, a.compounding.frequency)
 end
 
+# Keep concrete compounding combinations, as for isless, to avoid invalidating
+# previously compiled generic comparison code. Numeric types remain independent.
+"""
+    <(a::Rate, b::Rate)
 
+Compare the stored forces of interest with numeric `<`, regardless of compounding
+convention. NaN is unordered and signed zeros compare equal. The `>` comparison
+uses Base's `b < a` fallback. Use `isless` for a total sorting order.
+"""
+function Base.:<(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2}
+    return a.continuous_value < b.continuous_value
+end
+function Base.:<(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2}
+    return a.continuous_value < b.continuous_value
+end
+function Base.:<(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2}
+    return a.continuous_value < b.continuous_value
+end
+function Base.:<(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2}
+    return a.continuous_value < b.continuous_value
+end
+
+# Every Rate stores its continuously compounded equivalent in `continuous_value`, and
+# a lower force of interest is exactly a lower `continuous_value`, so `isless` compares
+# that field directly — no compounding conversion needed, and the comparison is
+# frame-symmetric. Forwarding to `isless` on the underlying numbers inherits its total
+# order (e.g. NaN ordering).
+#
+# Separate methods for each concrete compounding combination avoid invalidating
+# previously compiled generic `isless` code.
 """
     isless(a::Rate, b::Rate)
 
 Total ordering of `Rate`s by force of interest (the continuously compounded equivalent
-rate), consistent with the ordering used by `<` and `>`.
+rate). Unlike numeric `<` and `>`, this orders negative zero before positive zero
+and NaN after all other values.
 
-Defining `isless` supplies the `<` and `>` fallbacks and enables the order-based
-functions in `Base` — `sort`, `minimum`/`maximum`, `extrema`, `min`/`max`, and
-`clamp` — to work on `Rate`s.
+Defining `isless` enables sorting and order-based functions in `Base`, such as
+`sort`, `minimum`/`maximum`, and `extrema`, to work on `Rate`s.
 
 # Examples
 
@@ -555,14 +584,6 @@ julia> minimum([Periodic(0.05, 2), Continuous(0.03)])
 Continuous(0.03)
 ```
 """
-# Every Rate stores its continuously compounded equivalent in `continuous_value`, and
-# a lower force of interest is exactly a lower `continuous_value`, so `isless` compares
-# that field directly — no compounding conversion needed, and the comparison is
-# frame-symmetric. Forwarding to `isless` on the underlying numbers inherits its total
-# order (e.g. NaN ordering).
-#
-# Separate methods for each concrete compounding combination avoid invalidating
-# previously compiled generic `isless` code.
 function Base.isless(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2}
     return isless(a.continuous_value, b.continuous_value)
 end
