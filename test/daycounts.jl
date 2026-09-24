@@ -1,3 +1,7 @@
+# A non-flat curve: 2% for the first year, 6% after.
+struct TwoRateCurve end
+FinanceCore.discount(::TwoRateCurve, t) = t <= 1 ? exp(-0.02t) : exp(-0.02 - 0.06(t - 1))
+
 @testset "DayCounts extension" begin
     d1 = Date(2024, 1, 1)
     d2 = Date(2024, 7, 1)
@@ -26,6 +30,11 @@
 
     # a degenerate interval discounts to exactly 1
     @test discount(Continuous(0.03), d1, d1, DayCounts.Actual365Fixed()) == 1.0
+
+    # Only constant rates: a curve's discount factor over two dates depends on where the
+    # interval sits relative to its valuation date, not just on its length.
+    @test_throws MethodError discount(TwoRateCurve(), d1, d2, DayCounts.Actual365Fixed())
+    @test_throws MethodError accumulation(TwoRateCurve(), d1, d2, DayCounts.Actual365Fixed())
 
     # reversed dates give a negative year fraction, so discount inverts
     t = DayCounts.yearfrac(d1, d2, DayCounts.Actual365Fixed())
