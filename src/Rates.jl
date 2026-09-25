@@ -428,7 +428,17 @@ forward(rate::T, from, to) where {T <: Rate} = rate
     +(T<:Real, Rate)
     +(Rate, Rate)
 
-The addition of a rate with a number will inherit the type of the `Rate`, or the first argument's type if both are `Rate`s.
+Add in the nominal space of a rate's compounding convention, the way a spread is quoted over a
+base rate: `Periodic(0.04, 2) + 0.01` is `Periodic(0.05, 2)`.
+
+With two `Rate`s, the right operand is first converted to the left operand's convention, and
+the result has the left operand's compounding. Rates of the same convention therefore add
+nominally, while for different conventions the sum depends on the order.
+
+To combine two rates independently of their conventions, add their continuously compounded
+forces with `Continuous(a) + b`. That is the rate whose discount factor is the product of theirs:
+`discount(Continuous(a) + b, t) ≈ discount(a, t) * discount(b, t)`. For two annual rates it is
+`(1 + a)(1 + b) - 1`.
 
 # Examples
 
@@ -438,6 +448,15 @@ Periodic(0.05, 2)
 
 julia> Periodic(0.04, 2) + 0.01
 Periodic(0.05, 2)
+
+julia> Periodic(0.04, 1) + Continuous(0.01)   # 1% converted to annual, then added
+Periodic(0.05005016708416806, 1)
+
+julia> Continuous(0.01) + Periodic(0.04, 1)   # 4% annual converted to a force, then added
+Continuous(0.0492207131532813)
+
+julia> Continuous(Periodic(0.04, 1)) + Continuous(0.01)   # the same sum in either order
+Continuous(0.0492207131532813)
 ```
 """
 function Base.:+(a::Rate{N, T}, b::Real) where {N, T <: Continuous}
@@ -466,7 +485,9 @@ end
     -(T<:Real, Rate)
     -(Rate, Rate)
 
-The subtraction of a rate with a number will inherit the type of the `Rate`, or the first argument's type if both are `Rate`s.
+Subtract in the nominal space of a rate's compounding convention. As with [`+`](@ref), the right
+operand of `Rate - Rate` is first converted to the left operand's convention, so
+`(a - b) + b` recovers `a`.
 
 # Examples
 
