@@ -188,3 +188,11 @@ end
     @test numeric ≈ [0.011, 0.01]
     @test wrapped ≈ numeric
 end
+
+@testset "irr of empty cashflows" begin
+    # Every rate is a root of an empty stream's present value, so none is its IRR; this is not
+    # the `nothing` of cashflows that no rate solves.
+    @test_throws ArgumentError irr(Float64[])
+    @test_throws ArgumentError irr(Float64[], Float64[])
+    @test_throws ArgumentError irr(Cashflow{Float64, Float64}[])
+end

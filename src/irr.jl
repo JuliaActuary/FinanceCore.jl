@@ -7,6 +7,9 @@ Calculate the internal rate of return with given timepoints. If no timepoints gi
 
 Returns a `Periodic(rate, 1)` `Rate`, or `nothing` if no root is found. Get the scalar rate by calling `rate()` on the result.
 
+An empty collection of cashflows throws an `ArgumentError`: its present value is zero at every
+rate, so it has no internal rate of return (`nothing` means that no rate solves nonempty cashflows).
+
 # Example
 ```julia-repl
 julia> internal_rate_of_return([-100,110],[0,1]) # e.g. cashflows at time 0 and 1
@@ -23,14 +26,23 @@ function internal_rate_of_return(cashflows::AbstractVector{<:Real})
 end
 
 function internal_rate_of_return(cashflows::AbstractVector{<:Cashflow})
+    _check_nonempty_irr(cashflows)
     flows = ((amount(cf), timepoint(cf)) for cf in cashflows)
     return _irr(r -> __pv_div_pv′(r, cashflows), flows)
 end
 
 function internal_rate_of_return(cashflows, times)
+    _check_nonempty_irr(cashflows)
     @assert length(cashflows) <= length(times)
     return _irr(r -> __pv_div_pv′(r, cashflows, times), zip(cashflows, times))
 end
+
+_check_nonempty_irr(cashflows) = isempty(cashflows) && throw(
+    ArgumentError(
+        "internal_rate_of_return needs at least one cashflow: the present value of an empty " *
+            "stream is zero at every rate, so it has no internal rate of return."
+    )
+)
 
 # The input adapters are lazy: Newton keeps its representation-specific kernel,
 # while fallback policy operates on the same (amount, time) stream for both forms.
