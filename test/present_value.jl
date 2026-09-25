@@ -30,6 +30,9 @@
         # under ForwardDiff the empty sum is a dual number with zero partials
         @test iszero(ForwardDiff.derivative(r -> pv(r, Float64[], Float64[]), 0.05))
         @test iszero(ForwardDiff.derivative(r -> pv(Continuous(r), Cashflow{Float64, Float64}[]), 0.05))
+        # an abstract element type has no typed zero
+        @test_throws MethodError pv(0.05, Cashflow[])
+        @test_throws MethodError pv(0.05, Any[])
     end
 
 end

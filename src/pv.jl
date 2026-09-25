@@ -7,7 +7,9 @@ at the times specified in `timepoints`. If no `timepoints` given, assumes that c
 If your timepoints are dates, you can convert them into a floating point representation of the time interval using DayCounts.jl.
 
 An empty collection of cashflows has a present value of zero, of the type a present value of its
-cashflows would have.
+cashflows would have. This needs a concrete element type (numbers, or `Cashflow{N,T}`): an empty
+collection with an abstract element type, such as `Cashflow[]` or `Any[]`, has no zero to return
+and throws a `MethodError`.
 
 !!! warning "Default timepoints differ from `internal_rate_of_return`"
     With no `timepoints` argument, `present_value` assumes cashflows occur at the vector's *indices* (`1, 2, ..., n`), while [`internal_rate_of_return`](@ref) assumes they start at time zero (`0, 1, ..., n-1`). Pass explicit timepoints to avoid ambiguity.
