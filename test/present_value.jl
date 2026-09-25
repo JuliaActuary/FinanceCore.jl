@@ -19,4 +19,17 @@
         @test present_value(r, [1, 2]) ≈ 1 / 1.02 + 2 / 1.02^2
     end
 
+    @testset "empty cashflows" begin
+        # The empty sum: zero, of the type a present value of such cashflows has.
+        for r in (0.05, Periodic(0.05, 1), Continuous(0.05))
+            @test pv(r, Float64[]) === 0.0
+            @test pv(r, Float64[], Float64[]) === 0.0
+            @test pv(r, Int[], Int[]) === 0 * pv(r, [1], [1])
+            @test pv(r, Cashflow{Float64, Float64}[]) === 0.0
+        end
+        # under ForwardDiff the empty sum is a dual number with zero partials
+        @test iszero(ForwardDiff.derivative(r -> pv(r, Float64[], Float64[]), 0.05))
+        @test iszero(ForwardDiff.derivative(r -> pv(Continuous(r), Cashflow{Float64, Float64}[]), 0.05))
+    end
+
 end

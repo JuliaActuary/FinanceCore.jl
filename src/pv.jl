@@ -6,6 +6,9 @@ at the times specified in `timepoints`. If no `timepoints` given, assumes that c
 
 If your timepoints are dates, you can convert them into a floating point representation of the time interval using DayCounts.jl.
 
+An empty collection of cashflows has a present value of zero, of the type a present value of its
+cashflows would have.
+
 !!! warning "Default timepoints differ from `internal_rate_of_return`"
     With no `timepoints` argument, `present_value` assumes cashflows occur at the vector's *indices* (`1, 2, ..., n`), while [`internal_rate_of_return`](@ref) assumes they start at time zero (`0, 1, ..., n-1`). Pass explicit timepoints to avoid ambiguity.
 
@@ -23,6 +26,7 @@ julia> present_value(Continuous(0.1), [10,20])
 
 """
 function present_value(r, x, times)
+    isempty(x) && return _empty_present_value(r, x, times)
     # previously tried LoopVectorization.vmapreduce, but it didn't play well with
     # dual numbers when differentiated
     return mapreduce((xi, ti) -> present_value(r, xi, ti), +, x, times)
@@ -35,8 +39,16 @@ function present_value(r::Real, x::AbstractVector, times)
 end
 
 function present_value(r, x)
+    isempty(x) && return _empty_present_value(r, x, keys(x))
     return mapreduce(px -> present_value(r, last(px), first(px)), +, pairs(x))
 end
+
+# The empty sum: a zero amount discounted at time zero, so that the result has the type of a
+# present value of `x`'s cashflows (a dual number under ForwardDiff, for example).
+_empty_present_value(r, x, times) = present_value(r, _zero_cashflow(eltype(x)), _zero_time(eltype(times)))
+_zero_cashflow(::Type{T}) where {T <: Real} = zero(T)
+_zero_cashflow(::Type{Cashflow{N, T}}) where {N, T} = Cashflow(zero(N), _zero_time(T))
+_zero_time(::Type{T}) where {T} = zero(T)
 
 function present_value(r::Real, x::AbstractVector)
     return present_value(Rate(r), x)
