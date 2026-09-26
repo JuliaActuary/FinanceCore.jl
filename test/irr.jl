@@ -248,6 +248,46 @@ end
     )
 end
 
+@testset "irr derivatives through the Newton solver" begin
+    # Newton solves on primal values too, and the same implicit-function step gives its root the
+    # partials. The gradients equal those of differentiating through the Newton iterations
+    # (the previous mechanism, pinned below) and central differences.
+    cases = (
+        ([-100.0, 5.0, 5.0, 105.0], [0.0, 1.0, 2.0, 3.0], [0.003672085646312451, 0.0034972244250594756, 0.0033306899286280737, 0.0031720856463124504]),
+        ([-1000.0, 300.0, 400.0, 500.0], [0.0, 0.5, 1.5, 2.5], [0.0007013988920219666, 0.0006632635211485001, 0.0005931003571143857, 0.0005303593856633244]),
+        ([100.0, -30.0, -40.0, -50.0], [0.0, 1.0, 2.0, 3.0], [-0.005156799362453198, -0.004735512127940115, -0.004348642159155063, -0.003993377720818277]),
+        ([-50.0, 20.0, 20.0, 20.0], [0.0, 1.0, 2.0, 3.0], [0.011318939027688985, 0.010317988324450113, 0.009405553188603512, 0.008573806056168835]),
+    )
+    for (amounts, times, previous) in cases
+        f(a) = rate(irr(a, times))
+        gradient = ForwardDiff.gradient(f, amounts)
+        central = [(f(amounts .+ 1.0e-5 .* (eachindex(amounts) .== i)) - f(amounts .- 1.0e-5 .* (eachindex(amounts) .== i))) / 2.0e-5 for i in eachindex(amounts)]
+        @test gradient ≈ previous rtol = 1.0e-12
+        @test gradient ≈ central rtol = 1.0e-6
+        @test ForwardDiff.gradient(a -> rate(irr(Cashflow.(a, times))), amounts) ≈ previous rtol = 1.0e-12
+        # with respect to the timepoints as well
+        g(t) = rate(irr(amounts, t))
+        central_t = [(g(times .+ 1.0e-6 .* (eachindex(times) .== i)) - g(times .- 1.0e-6 .* (eachindex(times) .== i))) / 2.0e-6 for i in eachindex(times)]
+        @test ForwardDiff.gradient(g, times) ≈ central_t rtol = 1.0e-6
+        # the value is the primal IRR exactly
+        @test ForwardDiff.value(rate(irr(ForwardDiff.Dual.(amounts, 1.0), times))) === rate(irr(amounts, times))
+    end
+    # range timepoints (the one-argument form) keep the primal kernel
+    @test ForwardDiff.gradient(a -> rate(irr(a)), [-100.0, 110.0]) ≈ [0.011, 0.01]
+    @test ForwardDiff.value(rate(irr(ForwardDiff.Dual.([-100.0, 5.0, 105.0], 1.0)))) === rate(irr([-100.0, 5.0, 105.0]))
+
+    # A repeated root (-100 + 210v - 110.25v² = -(10 - 10.5v)²) has no derivative; Newton reaches
+    # it, and differentiating through its iterations used to return partials of about -1.5e6.
+    for times in ([0.0, 1.0, 2.0], [1000.0, 1001.0, 1002.0])
+        @test !isnothing(irr([-100.0, 210.0, -110.25], times))
+        @test_throws ArgumentError ForwardDiff.gradient(a -> rate(irr(a, times)), [-100.0, 210.0, -110.25])
+    end
+    # first-order only: second derivatives through either stage throw
+    @test_throws ArgumentError ForwardDiff.hessian(a -> rate(irr(a, [0.0, 1.0])), [-100.0, 110.0])
+    # dual inputs without an IRR still return nothing
+    @test isnothing(irr(ForwardDiff.Dual.([100.0, 100.0], 1.0)))
+end
+
 @testset "irr of empty cashflows" begin
     # Like an all-zero stream, an empty stream has no identifiable IRR: every rate solves its
     # identically zero pricing equation.
