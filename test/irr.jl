@@ -176,6 +176,17 @@ end
         end
     end
 
+    # Exact-zero amounts neither set the fallback's time origin nor enter its terms: a zero far
+    # from the other cashflows would otherwise evaluate as 0 * Inf.
+    for (amounts, times) in (
+            ([0.0, -100.0, 110.0], [0.0, 1000.0, 1001.0]),
+            ([-100.0, 0.0, 110.0, 0.0], [1000.0, 1000.5, 1001.0, 3000.0]),
+            ([0.0, -100.0, 0.0, 110.0, 0.0], [0.0, 1000.0, 1000.5, 1001.0, 5000.0]),
+        )
+        @test irr(amounts, times) ≈ Periodic(0.1, 1)
+        @test irr(Cashflow.(amounts, times)) ≈ Periodic(0.1, 1)
+    end
+
     # Extra timepoints have always been ignored; they must not shift the fallback's origin.
     @test irr([-100.0, 110.0], [1000.0, 1001.0, -1.0e6]) ≈ Periodic(0.1, 1)
     @test_throws AssertionError irr([-100.0, 110.0], [0.0])

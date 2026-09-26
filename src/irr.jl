@@ -59,18 +59,22 @@ function _is_irr_root(r, terms)
 end
 
 function _irr_robust(flows)
+    # Exact-zero amounts contribute nothing at any rate, but they would still set the
+    # time origin below, and a zero term far from that origin evaluates as 0 * Inf.
+    # `iszero` keeps a zero amount that carries dual-number partials.
+    nonzero = Iterators.filter(p -> !iszero(first(p)), flows)
     # Cashflows with only one sign cannot have a finite IRR. Keep this scan on
     # the fallback path so ordinary Newton-convergent calls do not pay for it.
-    has_positive = any(p -> first(p) > 0, flows)
-    has_negative = any(p -> first(p) < 0, flows)
+    has_positive = any(p -> first(p) > 0, nonzero)
+    has_negative = any(p -> first(p) < 0, nonzero)
     has_positive && has_negative || return nothing
 
     # Scaling amounts and shifting the time origin preserve roots and prevent
     # overflow/underflow from obscuring the residual. Both the root search and
     # its acceptance check use the same discounted terms.
-    M = maximum(p -> abs(first(p)), flows)
-    t0 = minimum(last, flows)
-    terms(r) = (cf / M * exp(-r * (t - t0)) for (cf, t) in flows)
+    M = maximum(p -> abs(first(p)), nonzero)
+    t0 = minimum(last, nonzero)
+    terms(r) = (cf / M * exp(-r * (t - t0)) for (cf, t) in nonzero)
     # Continuous-rate space avoids the periodic singularity at i = -1.
     roots = Roots.find_zeros(r -> sum(terms(r)), -5.0, 3.0)
     filter!(r -> _is_irr_root(r, terms(r)), roots)
