@@ -46,9 +46,14 @@
         end
         @test pv(0.05, Float64[], Any[]) === 0.0
         @test iszero(ForwardDiff.derivative(r -> pv(r, Any[]), 0.05))
-        # `false` is a strong zero: a NaN from evaluating the rate at time zero is discarded.
-        @test iszero(pv(Continuous(Inf), Float64[]))
-        @test iszero(pv(Continuous(Inf), Any[]))
+        # The zero does not depend on the rate's value: evaluating Continuous(Inf) at time zero
+        # gives NaN, but the empty present value is a positive zero of the valuation's type.
+        @test pv(Continuous(Inf), Float64[]) === 0.0
+        @test pv(Continuous(Inf), Any[]) === 0.0
+        @test !signbit(pv(Continuous(Inf), Float64[]))
+        @test !signbit(pv(Continuous(-Inf), Float64[]))
+        @test !signbit(pv(Continuous(NaN), Float64[]))
+        @test !signbit(pv(Continuous(-NaN), Float64[]))
     end
 
 end
