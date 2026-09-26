@@ -190,9 +190,9 @@ end
 end
 
 @testset "irr of empty cashflows" begin
-    # Every rate is a root of an empty stream's present value, so none is its IRR; this is not
-    # the `nothing` of cashflows that no rate solves.
-    @test_throws ArgumentError irr(Float64[])
-    @test_throws ArgumentError irr(Float64[], Float64[])
-    @test_throws ArgumentError irr(Cashflow{Float64, Float64}[])
+    # Like an all-zero stream, an empty stream has no identifiable IRR: every rate solves its
+    # identically zero pricing equation.
+    @test isnothing(irr(Float64[]))
+    @test isnothing(irr(Float64[], Float64[]))
+    @test isnothing(irr(Cashflow{Float64, Float64}[]))
 end
