@@ -20,6 +20,8 @@ Periodic(0.1, 1)
 
 # Solver notes
 First tries Newton's method (fast). If Newton does not converge, falls back to a robust root-finding search in continuous rate space over `[-5, 3]` (approximately `[-0.993, 19.1]` in periodic rate). Fallback roots are residual-validated; when multiple roots remain, returns the one nearest zero.
+
+ForwardDiff derivatives with respect to the cashflows or timepoints pass through both stages. The fallback solves on primal values and gives its root first-order partials by one implicit-function step; there, nested dual numbers (second derivatives) and a vanishing derivative (a repeated root) throw an `ArgumentError`.
 """
 function internal_rate_of_return(cashflows::AbstractVector{<:Real})
     return internal_rate_of_return(cashflows, 0:(length(cashflows) - 1))
@@ -61,24 +63,69 @@ end
 function _irr_robust(flows)
     # Exact-zero amounts contribute nothing at any rate, but they would still set the
     # time origin below, and a zero term far from that origin evaluates as 0 * Inf.
-    # `iszero` keeps a zero amount that carries dual-number partials.
-    nonzero = Iterators.filter(p -> !iszero(first(p)), flows)
+    # A zero amount that carries dual-number partials is kept.
+    nonzero = Iterators.filter(p -> !_is_exact_zero(first(p)), flows)
+    # The root is searched on primal values, and dual-number partials of the amounts or
+    # times are propagated afterwards by `_irr_implicit`. A zero amount that carries
+    # partials cannot move the primal root, so the search leaves it out as well.
+    search = Iterators.filter(p -> !iszero(first(p)), ((_primal(cf), _primal(t)) for (cf, t) in nonzero))
     # Cashflows with only one sign cannot have a finite IRR. Keep this scan on
     # the fallback path so ordinary Newton-convergent calls do not pay for it.
-    has_positive = any(p -> first(p) > 0, nonzero)
-    has_negative = any(p -> first(p) < 0, nonzero)
+    has_positive = any(p -> first(p) > 0, search)
+    has_negative = any(p -> first(p) < 0, search)
     has_positive && has_negative || return nothing
 
     # Scaling amounts and shifting the time origin preserve roots and prevent
     # overflow/underflow from obscuring the residual. Both the root search and
     # its acceptance check use the same discounted terms.
-    M = maximum(p -> abs(first(p)), nonzero)
-    t0 = minimum(last, nonzero)
-    terms(r) = (cf / M * exp(-r * (t - t0)) for (cf, t) in nonzero)
+    M = maximum(p -> abs(first(p)), search)
+    t0 = minimum(last, search)
+    terms(r) = (cf / M * exp(-r * (t - t0)) for (cf, t) in search)
     # Continuous-rate space avoids the periodic singularity at i = -1.
     roots = Roots.find_zeros(r -> sum(terms(r)), -5.0, 3.0)
     filter!(r -> _is_irr_root(r, terms(r)), roots)
-    return isempty(roots) ? nothing : argmin(abs, roots)
+    isempty(roots) && return nothing
+    return _irr_implicit(argmin(abs, roots), nonzero, M, t0)
+end
+
+# Dual-number hooks, defined for ForwardDiff by FinanceCoreForwardDiffExt: `_primal` strips
+# every dual layer, `_ad_depth` counts the layers, and `_is_exact_zero` also requires zero
+# partials (ForwardDiff 0.10's `iszero` looks at the value only). Plain numbers have no layers.
+_primal(x) = x
+_ad_depth(::Type) = 0
+_ad_depth(x) = _ad_depth(typeof(x))
+_is_exact_zero(x) = iszero(x)
+
+# The fallback's root `r0` solves the primal residual, so it carries no partials. With dual
+# amounts or times, one implicit-function step `r0 - (g - primal(g)) / g′` gives it the
+# first-order partials `dr = -(∂g/∂θ) / (∂g/∂r)` while keeping the value `r0` exactly: `g` is
+# the scaled residual at `r0` evaluated with the dual inputs, and `g′` its primal derivative in
+# the rate. Nested duals and a slope that vanishes relative to the size of its terms (as at a
+# repeated root) throw rather than return wrong partials.
+function _irr_implicit(r0, flows, M, t0)
+    maximum(p -> max(_ad_depth(first(p)), _ad_depth(last(p))), flows) == 0 && return r0
+    g = sum(cf / M * exp(-r0 * (t - t0)) for (cf, t) in flows)
+    _ad_depth(g) == 1 || throw(
+        ArgumentError(
+            "internal_rate_of_return supports first-order ForwardDiff derivatives only; " *
+                "nested dual numbers are not supported"
+        )
+    )
+    slope = zero(r0)
+    scale = zero(r0)
+    for (cf, t) in flows
+        τ = _primal(t) - t0
+        term = _primal(cf) / M * τ * exp(-r0 * τ)
+        slope -= term
+        scale += abs(term)
+    end
+    (isfinite(slope) && abs(slope) > sqrt(eps(typeof(r0))) * scale) || throw(
+        ArgumentError(
+            "internal_rate_of_return has a vanishing or non-finite derivative at the solution " *
+                "($slope); its sensitivity is undefined"
+        )
+    )
+    return r0 - (g - _primal(g)) / slope
 end
 
 # Backend trait for vectorization strategy

@@ -200,6 +200,54 @@ end
     @test wrapped ≈ numeric
 end
 
+@testset "irr derivatives through the fallback solver" begin
+    # Newton cannot finish these cashflows (every discount factor underflows from its
+    # starting point), so the fallback solves on primal values and one implicit-function
+    # step gives the root its partials.
+    times = [1000.0, 1001.0]
+    f(a) = rate(irr(a, times))
+    h = 1.0e-4
+    central = [
+        (f([-100 + h, 110]) - f([-100 - h, 110])) / 2h,
+        (f([-100, 110 + h]) - f([-100, 110 - h])) / 2h,
+    ]
+    @test ForwardDiff.gradient(f, [-100.0, 110.0]) ≈ central rtol = 1.0e-8
+    @test ForwardDiff.gradient(f, [-100.0, 110.0]) ≈ [0.011, 0.01]    # 110/100², 1/100
+    @test ForwardDiff.gradient(a -> rate(irr(Cashflow.(a, times))), [-100.0, 110.0]) ≈ [0.011, 0.01]
+    # the value is the primal root exactly
+    dual = rate(irr(ForwardDiff.Dual.([-100.0, 110.0], 1.0), times))
+    @test ForwardDiff.value(dual) === rate(irr([-100.0, 110.0], times))
+
+    # A dual time: the force is log(1.1) / (1 + τ), so d(rate)/dτ = -1.1 log(1.1) at τ = 0.
+    @test ForwardDiff.derivative(τ -> rate(irr([-100.0, 110.0], [1000.0, 1001.0 + τ])), 0.0) ≈
+        -1.1 * log(1.1)
+    @test ForwardDiff.derivative(τ -> rate(irr(Cashflow.([-100.0, 110.0], [1000.0, 1001.0 + τ]))), 0.0) ≈
+        -1.1 * log(1.1)
+
+    # Two roots, the one nearest zero chosen; compared with central differences.
+    g(a) = rate(irr(a, [1000.0, 1001.0, 1002.0]))
+    a3 = [-100.0, 230.0, -132.0]
+    central3 = [(g(a3 .+ 1.0e-5 .* (1:3 .== i)) - g(a3 .- 1.0e-5 .* (1:3 .== i))) / 2.0e-5 for i in 1:3]
+    @test ForwardDiff.gradient(g, a3) ≈ central3 rtol = 1.0e-6
+
+    # A zero amount that carries partials still moves the root: d(rate)/da₀ = -(1 + i) / PV′(r).
+    # It is enormous here because the other cashflows sit 1000 years later.
+    grad0 = ForwardDiff.gradient(a -> rate(irr(a, [0.0, 1000.0, 1001.0])), [0.0, -100.0, 110.0])
+    expected0 = setprecision(256) do
+        r = log(big"1.1")
+        dpv = 100 * 1000 * exp(-1000r) - 110 * 1001 * exp(-1001r)
+        Float64(-exp(r) / dpv)
+    end
+    @test grad0[1] ≈ expected0 rtol = 1.0e-10
+    @test grad0[2:3] ≈ [0.011, 0.01]
+
+    # Nested dual numbers and a repeated root have no first-order implicit step: both throw.
+    @test_throws ArgumentError ForwardDiff.hessian(f, [-100.0, 110.0])
+    @test_throws ArgumentError ForwardDiff.gradient(
+        a -> rate(irr(a, [5000.0, 5001.0, 5002.0])), [-100.0, 210.0, -110.25]
+    )
+end
+
 @testset "irr of empty cashflows" begin
     # Like an all-zero stream, an empty stream has no identifiable IRR: every rate solves its
     # identically zero pricing equation.
