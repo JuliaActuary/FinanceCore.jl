@@ -59,7 +59,8 @@ jobs:
           skip: Dates
           # exact "=floor" pins for every entry, incl. >=1.0 (default v0 tilde-pins those)
           strict: 'true'
-      - uses: julia-actions/cache@v2
+      # No julia-actions/cache here: a cache precompiled on another runner's CPU
+      # (LoopVectorization/HostCPUFeatures) can abort the floor build in LLVM.
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
   docs:
