@@ -132,7 +132,9 @@ _is_exact_zero(x) = iszero(x)
 _ad_depth_flows(flows) = maximum(p -> max(_ad_depth(first(p)), _ad_depth(last(p))), flows; init = 0)
 # A copy without dual partials, or the input itself when it has none (so that, for example, a
 # range of timepoints keeps the solver's range kernel).
-_primal_values(v) = all(x -> _ad_depth(x) == 0, v) ? v : map(_primal, v)
+# A concrete element type decides this without a scan, and keeps the result's type inferable.
+_primal_values(v) = isconcretetype(eltype(v)) ? (_ad_depth(eltype(v)) == 0 ? v : map(_primal, v)) :
+    all(x -> _ad_depth(x) == 0, v) ? v : map(_primal, v)
 
 # The root of dual inputs: `r0` solves their primal values (through both solver stages), and
 # implicit-function steps give it partials. Exact zeros are dropped, as in the fallback. A zero
