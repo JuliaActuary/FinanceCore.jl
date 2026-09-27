@@ -122,7 +122,7 @@ function _irr_dual(r0, flows)
     isnothing(r0) && return nothing
     nonzero = Iterators.filter(p -> !_is_exact_zero(first(p)), flows)
     M, t0 = _irr_scale_origin(Iterators.filter(p -> !iszero(first(p)), ((_primal(cf), _primal(t)) for (cf, t) in nonzero)))
-    return _periodic_from_force(_irr_implicit(r0, nonzero, log(M), t0))
+    return _periodic_from_force(_irr_implicit(r0, nonzero, M, t0))
 end
 
 # `r0` solves the primal residual, so it carries no partials. The implicit-function step
@@ -130,21 +130,27 @@ end
 # the residual scaled by `M` and shifted to the time origin `t0` with the dual inputs, `g₀` its
 # primal value at `r0` and `g′` its primal slope there. Repeating the step with the dual iterate
 # corrects one more order each time, so one step per dual layer gives the partials of nested duals
-# (a Hessian takes two); every step keeps the value `r0` exactly. The scale enters the exponent,
-# `exp(-r⋅τ - log(M))`, so that a term far before the origin does not overflow before it is
-# scaled. A slope that vanishes relative to the size of its terms (as at a repeated root) throws
-# rather than return wrong partials.
-function _irr_implicit(r0, flows, logM, t0)
-    g(r) = sum(cf * exp(-r * (t - t0) - logM) for (cf, t) in flows)
+# (a Hessian takes two); every step keeps the value `r0` exactly. Each term `cf⋅exp(-r⋅τ)/M` takes
+# the scale where it can't overflow: on the amount first, since for a tiny notional
+# `exp(-log(M))` alone exceeds floatmax, or in the exponent when `exp(-r⋅τ)` already overflows, as
+# for a zero amount far before the origin. The form is chosen from primal values, so every step
+# evaluates the same one. A slope that vanishes relative to the size of its terms (as at a
+# repeated root) throws rather than return wrong partials.
+function _irr_implicit(r0, flows, M, t0)
+    logM = log(M)
+    # exp(x) is finite below log(floatmax)
+    finite_below = log(floatmax(typeof(r0)))
+    term(cf, τ, r) = -r0 * _primal(τ) < finite_below ? cf / M * exp(-r * τ) : cf * exp(-r * τ - logM)
+    g(r) = sum(term(cf, t - t0, r) for (cf, t) in flows)
     slope = zero(r0)
     scale = zero(r0)
     for (cf, t) in flows
         a = _primal(cf)
         iszero(a) && continue
         τ = _primal(t) - t0
-        term = a * τ * exp(-r0 * τ - logM)
-        slope -= term
-        scale += abs(term)
+        x = τ * term(a, τ, r0)
+        slope -= x
+        scale += abs(x)
     end
     (isfinite(slope) && abs(slope) > sqrt(eps(typeof(r0))) * scale) || throw(
         ArgumentError(

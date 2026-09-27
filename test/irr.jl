@@ -315,6 +315,14 @@ end
     @test ForwardDiff.hessian(x -> rate(irr(x, [1000.0, 1001.0, 1002.0])), a3) ≈
         ForwardDiff.hessian(quadratic, a3) rtol = 1.0e-9
 
+    # The rate doesn't depend on the notional, so neither do its Hessians.
+    for n in (1.0e-300, 1.0e300)
+        t = [0.0, 1.0]
+        @test ForwardDiff.hessian(y -> rate(irr(n .* y, t)), a) ≈ by_amounts rtol = 1.0e-12
+        @test ForwardDiff.hessian(x -> rate(irr(n .* a, x)), t) ≈
+            ForwardDiff.hessian(x -> exp(log(1.1) / (x[2] - x[1])) - 1, t) rtol = 1.0e-12
+    end
+
     # A repeated root has no derivative of any order.
     @test_throws ArgumentError ForwardDiff.hessian(a -> rate(irr(a, [0.0, 1.0, 2.0])), [-100.0, 210.0, -110.25])
 end
@@ -331,6 +339,16 @@ end
     @test gradient[2] ≈ exp(2) * 1.0e-300 rtol = 1.0e-10    # a₃/a₂²
     @test gradient[3] ≈ 1.0e-300 rtol = 1.0e-10             # -1/a₂
     @test ForwardDiff.gradient(x -> rate(irr(Cashflow.(x, t))), a) ≈ gradient rtol = 1.0e-12
+
+    # A tiny notional: at M ≈ 1e-309, exp(-log(M)) alone overflows, so the scale divides the amounts
+    # first. Amounts n⋅[-1, x] a year apart have the rate x - 1.
+    f(x) = rate(irr(1.0e-309 .* [-1.0, x], [0.0, 1.0]))
+    @test f(1.1) ≈ 0.1 rtol = 1.0e-12
+    @test ForwardDiff.derivative(f, 1.1) ≈ 1 rtol = 1.0e-12
+    @test abs(ForwardDiff.derivative(y -> ForwardDiff.derivative(f, y), 1.1)) < 1.0e-12
+    # a zero amount carrying partials there, half a year in: d(rate)/dx₀ = (1 + i)^(1/2)
+    h(v) = rate(irr(1.0e-309 .* [-1.0, v[1], v[2]], [0.0, 0.5, 1.0]))
+    @test ForwardDiff.gradient(h, [0.0, 1.1]) ≈ [sqrt(1.1), 1] rtol = 1.0e-12
 end
 
 @testset "irr of empty cashflows" begin
