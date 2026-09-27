@@ -22,7 +22,7 @@ Periodic(0.1, 1)
 First tries Newton's method (fast). If Newton does not converge, falls back to a robust root-finding search in continuous rate space over `[-5, 3]` (approximately `[-0.993, 19.1]` in periodic rate). Fallback roots are residual-validated; when multiple roots remain, returns the one nearest zero.
 
 # Derivatives
-First-order ForwardDiff derivatives with respect to the cashflows or timepoints are supported. Both stages solve on primal (non-dual) values, and one implicit-function step then gives the root its partials, `dr = -(∂g/∂θ) / (∂g/∂r)` for the pricing residual `g`; the value is the primal IRR exactly. This is a first-order capability: nested dual numbers (for example `ForwardDiff.hessian`) throw an `ArgumentError`, as does a root whose derivative vanishes (a repeated root), where the sensitivity is undefined.
+ForwardDiff derivatives of any order with respect to the cashflows or timepoints are supported, including nested dual numbers (for example `ForwardDiff.hessian`). Both stages solve on primal (non-dual) values. Implicit-function steps `r ← r - (g(r) - g₀) / g′` for the pricing residual `g`, where `g₀` is its primal value and `g′` its primal slope at the root, then give the root its partials: the first gives `dr = -(∂g/∂θ) / (∂g/∂r)`, and each step adds one order, so one step per dual layer suffices. The value is the primal IRR exactly. A root whose derivative vanishes (a repeated root) throws an `ArgumentError`, since its sensitivity is undefined.
 """
 function internal_rate_of_return(cashflows::AbstractVector{<:Real})
     return internal_rate_of_return(cashflows, 0:(length(cashflows) - 1))
@@ -114,36 +114,35 @@ _ad_depth_flows(flows) = maximum(p -> max(_ad_depth(first(p)), _ad_depth(last(p)
 # range of timepoints keeps the solver's range kernel).
 _primal_values(v) = all(x -> _ad_depth(x) == 0, v) ? v : map(_primal, v)
 
-# The root of dual inputs: `r0` solves their primal values (through both solver stages), and one
-# implicit-function step gives it first-order partials. A zero amount that carries partials still
-# enters that step; exact zeros are dropped, as in the fallback, since a zero term far from the
-# time origin would evaluate as 0 * Inf.
+# The root of dual inputs: `r0` solves their primal values (through both solver stages), and
+# implicit-function steps give it partials. Exact zeros are dropped, as in the fallback. A zero
+# amount that carries partials still enters the steps, but not the time origin, the scale or the
+# slope, which use the primal nonzero amounts: a zero far from the origin contributes no slope.
 function _irr_dual(r0, flows)
     isnothing(r0) && return nothing
     nonzero = Iterators.filter(p -> !_is_exact_zero(first(p)), flows)
     M, t0 = _irr_scale_origin(Iterators.filter(p -> !iszero(first(p)), ((_primal(cf), _primal(t)) for (cf, t) in nonzero)))
-    return _periodic_from_force(_irr_implicit(r0, nonzero, M, t0))
+    return _periodic_from_force(_irr_implicit(r0, nonzero, log(M), t0))
 end
 
-# `r0` solves the primal residual, so it carries no partials. One implicit-function step
-# `r0 - (g - primal(g)) / g′` gives it the first-order partials `dr = -(∂g/∂θ) / (∂g/∂r)` while
-# keeping the value `r0` exactly: `g` is the residual scaled by `M` and shifted to the time origin
-# `t0`, evaluated at `r0` with the dual inputs, and `g′` its primal derivative in the rate. Nested
-# duals and a slope that vanishes relative to the size of its terms (as at a repeated root) throw
+# `r0` solves the primal residual, so it carries no partials. The implicit-function step
+# `r - (g(r) - g₀) / g′` gives it the first-order partials `dr = -(∂g/∂θ) / (∂g/∂r)`, where `g` is
+# the residual scaled by `M` and shifted to the time origin `t0` with the dual inputs, `g₀` its
+# primal value at `r0` and `g′` its primal slope there. Repeating the step with the dual iterate
+# corrects one more order each time, so one step per dual layer gives the partials of nested duals
+# (a Hessian takes two); every step keeps the value `r0` exactly. The scale enters the exponent,
+# `exp(-r⋅τ - log(M))`, so that a term far before the origin does not overflow before it is
+# scaled. A slope that vanishes relative to the size of its terms (as at a repeated root) throws
 # rather than return wrong partials.
-function _irr_implicit(r0, flows, M, t0)
-    g = sum(cf / M * exp(-r0 * (t - t0)) for (cf, t) in flows)
-    _ad_depth(g) == 1 || throw(
-        ArgumentError(
-            "internal_rate_of_return supports first-order ForwardDiff derivatives only; " *
-                "nested dual numbers are not supported"
-        )
-    )
+function _irr_implicit(r0, flows, logM, t0)
+    g(r) = sum(cf * exp(-r * (t - t0) - logM) for (cf, t) in flows)
     slope = zero(r0)
     scale = zero(r0)
     for (cf, t) in flows
+        a = _primal(cf)
+        iszero(a) && continue
         τ = _primal(t) - t0
-        term = _primal(cf) / M * τ * exp(-r0 * τ)
+        term = a * τ * exp(-r0 * τ - logM)
         slope -= term
         scale += abs(term)
     end
@@ -153,7 +152,13 @@ function _irr_implicit(r0, flows, M, t0)
                 "($slope); its sensitivity is undefined"
         )
     )
-    return r0 - (g - _primal(g)) / slope
+    g_r0 = g(r0)
+    g₀ = _primal(g_r0)
+    r = r0 - (g_r0 - g₀) / slope
+    for _ in 2:_ad_depth(g_r0)
+        r -= (g(r) - g₀) / slope
+    end
+    return r
 end
 
 # Backend trait for vectorization strategy

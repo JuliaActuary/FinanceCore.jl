@@ -241,8 +241,7 @@ end
     @test grad0[1] ≈ expected0 rtol = 1.0e-10
     @test grad0[2:3] ≈ [0.011, 0.01]
 
-    # Nested dual numbers and a repeated root have no first-order implicit step: both throw.
-    @test_throws ArgumentError ForwardDiff.hessian(f, [-100.0, 110.0])
+    # A repeated root has no derivative: it throws.
     @test_throws ArgumentError ForwardDiff.gradient(
         a -> rate(irr(a, [5000.0, 5001.0, 5002.0])), [-100.0, 210.0, -110.25]
     )
@@ -282,10 +281,56 @@ end
         @test !isnothing(irr([-100.0, 210.0, -110.25], times))
         @test_throws ArgumentError ForwardDiff.gradient(a -> rate(irr(a, times)), [-100.0, 210.0, -110.25])
     end
-    # first-order only: second derivatives through either stage throw
-    @test_throws ArgumentError ForwardDiff.hessian(a -> rate(irr(a, [0.0, 1.0])), [-100.0, 110.0])
     # dual inputs without an IRR still return nothing
     @test isnothing(irr(ForwardDiff.Dual.([100.0, 100.0], 1.0)))
+end
+
+@testset "irr derivatives of higher order" begin
+    # Each implicit-function step adds one order of partials, so nested duals get exact higher
+    # derivatives through both solver stages. Two cashflows have closed forms: the rate is
+    # -a₂/a₁ - 1 in the amounts and 1.1^(1/(t₂ - t₁)) - 1 in the timepoints, whatever the time
+    # origin, so the Newton stage (times 0, 1) and the fallback (times 1000, 1001) share them.
+    a = [-100.0, 110.0]
+    by_amounts = ForwardDiff.hessian(x -> -x[2] / x[1] - 1, a)
+    for t in ([0.0, 1.0], [1000.0, 1001.0])
+        @test ForwardDiff.hessian(x -> rate(irr(x, t)), a) ≈ by_amounts rtol = 1.0e-12
+        @test ForwardDiff.hessian(x -> rate(irr(Cashflow.(x, t))), a) ≈ by_amounts rtol = 1.0e-12
+        by_times = ForwardDiff.hessian(x -> exp(log(1.1) / (x[2] - x[1])) - 1, t)
+        @test ForwardDiff.hessian(x -> rate(irr(a, x)), t) ≈ by_times rtol = 1.0e-12
+        @test ForwardDiff.hessian(x -> rate(irr(Cashflow.(a, x))), t) ≈ by_times rtol = 1.0e-12
+        # a third derivative takes three steps: d³/da₁³ (-a₂/a₁) = 6a₂/a₁⁴
+        third = ForwardDiff.derivative(
+            u -> ForwardDiff.derivative(v -> ForwardDiff.derivative(w -> rate(irr([w, 110.0], t)), v), u),
+            -100.0,
+        )
+        @test third ≈ 6 * 110 / 100^4 rtol = 1.0e-10
+    end
+
+    # Three cashflows through the fallback, with two roots: -100 + 230v - 132v² = 0 at v = 1/(1 + i)
+    # gives i = 0.1 (chosen, nearest zero) and 0.2. The chosen root is the larger solution v of
+    # the quadratic, whose Hessian is the reference.
+    quadratic(x) = 1 / ((-x[2] - sqrt(x[2]^2 - 4 * x[1] * x[3])) / (2 * x[3])) - 1
+    a3 = [-100.0, 230.0, -132.0]
+    @test quadratic(a3) ≈ 0.1
+    @test ForwardDiff.hessian(x -> rate(irr(x, [1000.0, 1001.0, 1002.0])), a3) ≈
+        ForwardDiff.hessian(quadratic, a3) rtol = 1.0e-9
+
+    # A repeated root has no derivative of any order.
+    @test_throws ArgumentError ForwardDiff.hessian(a -> rate(irr(a, [0.0, 1.0, 2.0])), [-100.0, 210.0, -110.25])
+end
+
+@testset "irr derivatives at extreme scale" begin
+    # A zero amount at time 0 that carries partials, 400 years before cashflows of 1e300: its term
+    # at the root is exp(800) / 7.4e300 before scaling, so the scale must enter the exponent. The
+    # rate is -a₃/a₂ - 1 = expm1(2), and d(rate)/da₁ = -(1 + i) / PV′(r) = exp(802) / 1e300.
+    a = [0.0, -1.0e300, exp(2) * 1.0e300]
+    t = [0.0, 400.0, 401.0]
+    @test rate(irr(a, t)) ≈ expm1(2)
+    gradient = ForwardDiff.gradient(x -> rate(irr(x, t)), a)
+    @test gradient[1] ≈ Float64(exp(big(802)) / big"1e300") rtol = 1.0e-10
+    @test gradient[2] ≈ exp(2) * 1.0e-300 rtol = 1.0e-10    # a₃/a₂²
+    @test gradient[3] ≈ 1.0e-300 rtol = 1.0e-10             # -1/a₂
+    @test ForwardDiff.gradient(x -> rate(irr(Cashflow.(x, t))), a) ≈ gradient rtol = 1.0e-12
 end
 
 @testset "irr of empty cashflows" begin
