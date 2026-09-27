@@ -24,12 +24,14 @@ function FinanceCore.__pv_div_pv′(
         r::T,
         cashflows::StridedVector{T},
         times::TurboTimes{T},
+        t0,
     ) where {T <: TurboFloat}
     n = zero(T)
     d = zero(T)
+    s = T(t0)
     @turbo for i in eachindex(cashflows)
         cf = cashflows[i]
-        t = times[i]
+        t = times[i] - s
         a = cf * exp(-r * t)
         n += a
         d += a * -t

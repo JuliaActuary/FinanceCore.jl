@@ -115,7 +115,7 @@ end
 @testset "irr numeric types" begin
     cfs = Float32[-100, 110]
     times = Float32[0, 1]
-    result = FinanceCore.__pv_div_pv′(FinanceCore.SimdBackend(), 0.1f0, cfs, times)
+    result = FinanceCore.__pv_div_pv′(FinanceCore.SimdBackend(), 0.1f0, cfs, times, 0.0f0)
     @test result isa Float32
 
     cashflows = Cashflow.(cfs, times)
@@ -123,6 +123,7 @@ end
         FinanceCore.SimdBackend(),
         0.1f0,
         cashflows,
+        0.0f0,
     )
     @test cashflow_result isa Float32
 
@@ -135,11 +136,35 @@ end
         0.1,
         dual_cfs,
         0:1,
+        0,
     )
     @test dual_result isa ForwardDiff.Dual
 
     f(x) = rate(irr(x))
     @test ForwardDiff.gradient(f, [-100.0, 110.0]) ≈ [0.011, 0.01]
+end
+
+@testset "Newton's time origin" begin
+    # Newton solves Σ cf⋅exp(-r⋅(t - t0)) with t0 at the first nonzero amount, so cashflows far from
+    # time 0 converge as the same cashflows near it do (from time 0 it moved about 1/t per step,
+    # and ran out of iterations at t ≈ 1000).
+    cfs = [-100.0; fill(8.0, 28); 108.0]
+    t = collect(0.0:29.0)
+    for shift in (50.0, 1000.0, 1.0e5)
+        @test !isnothing(FinanceCore._irr_newton(FinanceCore._pv_ratio(cfs, t .+ shift)))
+        @test !isnothing(FinanceCore._irr_newton(FinanceCore._pv_ratio(Cashflow.(cfs, t .+ shift))))
+        @test irr(cfs, t .+ shift) ≈ irr(cfs, t) rtol = 1.0e-12
+        @test irr(Cashflow.(cfs, t .+ shift)) ≈ irr(cfs, t) rtol = 1.0e-12
+    end
+    # flows starting at time 0 keep their arithmetic
+    @test FinanceCore._newton_origin(zip(cfs, t), 0.0) === 0.0
+    # leading zero amounts don't set the origin, and unsorted times work too
+    @test FinanceCore._newton_origin(zip([0.0, -100.0, 110.0], [0.0, 1000.0, 1001.0]), 0.0) === 1000.0
+    @test !isnothing(FinanceCore._irr_newton(FinanceCore._pv_ratio([0.0, -100.0, 110.0], [0.0, 1000.0, 1001.0])))
+    @test irr([110.0, -100.0], [1001.0, 1000.0]) ≈ Periodic(0.1, 1)
+    # the origin of all-zero or empty flows is a zero of the time type
+    @test FinanceCore._newton_origin(zip([0.0, 0.0], [3.0, 4.0]), 0.0) === 0.0
+    @test FinanceCore._newton_origin(zip(Float64[], Float32[]), 0.0f0) === 0.0f0
 end
 
 @testset "IRR input representations share solver behavior" begin
@@ -149,12 +174,14 @@ end
         (Float32[-100, 110], Float32[0, 1], 0.1),
         (BigFloat[-100, 110], BigFloat[0, 1], 0.1),
         ([-100.0, 121.0], [0 // 1, 1 // 2], 0.4641),
-        # Newton cannot finish these; the normalized fallback recovers the root.
+        # Far from time 0 and at extreme notionals: Newton measures times from the first cashflow.
         ([-100.0, 110.0], [1000.0, 1001.0], 0.1),
         ([-1.0e-300, 1.1e-300], [1.0e6, 1.0e6 + 1], 0.1),
         ([-1.0e300, 1.1e300], [1000.0, 1001.0], 0.1),
-        # Multiple fallback roots: choose the one nearest zero in force space.
         ([-100.0, 230.0, -132.0], [1000.0, 1001.0, 1002.0], 0.1),
+        # Newton's derivative sum overflows or underflows; the normalized fallback recovers the root.
+        (1.0e307 .* [-1.0, 1.1], [0.0, 100.0], 1.1^(1 / 100) - 1),
+        (1.0e-303 .* [-1.0, 1.1], [0.0, 23000.0], 1.1^(1 / 23000) - 1),
         # One-sign, all-zero, and mixed-sign streams without a root.
         ([100.0, 100.0], [1.0, 1.0], nothing),
         ([-100.0, -100.0], [1.0, 1.0], nothing),
@@ -187,6 +214,9 @@ end
         @test irr(Cashflow.(amounts, times)) ≈ Periodic(0.1, 1)
     end
 
+    # Multiple roots: the fallback chooses the one nearest zero in force space (0.1 over 0.2).
+    @test FinanceCore._irr_robust(zip([-100.0, 230.0, -132.0], [1000.0, 1001.0, 1002.0])) ≈ log(1.1)
+
     # Extra timepoints have always been ignored; they must not shift the fallback's origin.
     @test irr([-100.0, 110.0], [1000.0, 1001.0, -1.0e6]) ≈ Periodic(0.1, 1)
     @test_throws AssertionError irr([-100.0, 110.0], [0.0])
@@ -201,20 +231,25 @@ end
 end
 
 @testset "irr at extreme notionals" begin
-    # Newton works on unscaled amounts. At 1e307 its derivative sum overflows, and at 1e-300 a
-    # thousand years out its sums underflow into the subnormals; either way it used to accept a
-    # wrong root. The robust solver, which scales the amounts, finds the rate instead.
-    for cfs in ((1.0e307 .* [-1.0, 1.1], [0.0, 100.0]), (1.0e-300 .* [-100.0, 110.0], [1000.0, 1001.0]))
-        expected = exp(log(-cfs[1][2] / cfs[1][1]) / (cfs[2][2] - cfs[2][1])) - 1
+    # Newton works on unscaled amounts. At 1e307 its derivative sum overflows, and at 1e-303 over
+    # 23,000 years its sums underflow into the subnormals; either way it used to accept a wrong
+    # root. The robust solver, which scales the amounts, finds the rate instead. Far from time 0
+    # alone no longer matters: Newton measures times from the first cashflow.
+    for cfs in (
+            (1.0e307 .* [-1.0, 1.1], [0.0, 100.0]), (1.0e-303 .* [-1.0, 1.1], [0.0, 23000.0]),
+            (1.0e-300 .* [-100.0, 110.0], [1000.0, 1001.0]),
+        )
+        expected = expm1(log(-cfs[1][2] / cfs[1][1]) / (cfs[2][2] - cfs[2][1]))
         @test rate(irr(cfs...)) ≈ expected rtol = 1.0e-12
         @test rate(irr(Cashflow.(cfs...))) ≈ expected rtol = 1.0e-12
     end
 end
 
-@testset "irr derivatives through the fallback solver" begin
-    # Newton cannot finish these cashflows (every discount factor underflows from its
-    # starting point), so the fallback solves on primal values and one implicit-function
-    # step gives the root its partials.
+@testset "irr derivatives far from time 0" begin
+    # Newton measures these cashflows from the first one, solving on primal values, and one
+    # implicit-function step gives the root its partials. (From time 0, Newton could not finish
+    # them and the fallback solved them; derivatives through the fallback are checked at
+    # extreme notionals below.)
     times = [1000.0, 1001.0]
     f(a) = rate(irr(a, times))
     h = 1.0e-4
@@ -300,7 +335,7 @@ end
     # Each implicit-function step adds one order of partials, so nested duals get exact higher
     # derivatives through both solver stages. Two cashflows have closed forms: the rate is
     # -a₂/a₁ - 1 in the amounts and 1.1^(1/(t₂ - t₁)) - 1 in the timepoints, whatever the time
-    # origin, so the Newton stage (times 0, 1) and the fallback (times 1000, 1001) share them.
+    # origin, so times 0, 1 and 1000, 1001 share them.
     a = [-100.0, 110.0]
     by_amounts = ForwardDiff.hessian(x -> -x[2] / x[1] - 1, a)
     for t in ([0.0, 1.0], [1000.0, 1001.0])
@@ -317,14 +352,20 @@ end
         @test third ≈ 6 * 110 / 100^4 rtol = 1.0e-10
     end
 
-    # Three cashflows through the fallback, with two roots: -100 + 230v - 132v² = 0 at v = 1/(1 + i)
-    # gives i = 0.1 (chosen, nearest zero) and 0.2. The chosen root is the larger solution v of
-    # the quadratic, whose Hessian is the reference.
+    # Three cashflows with two roots: -100 + 230v - 132v² = 0 at v = 1/(1 + i) gives i = 0.1 (the
+    # one Newton reaches from near zero, and the fallback's choice nearest zero) and 0.2. The chosen
+    # root is the larger solution v of the quadratic, whose Hessian is the reference.
     quadratic(x) = 1 / ((-x[2] - sqrt(x[2]^2 - 4 * x[1] * x[3])) / (2 * x[3])) - 1
     a3 = [-100.0, 230.0, -132.0]
     @test quadratic(a3) ≈ 0.1
     @test ForwardDiff.hessian(x -> rate(irr(x, [1000.0, 1001.0, 1002.0])), a3) ≈
         ForwardDiff.hessian(quadratic, a3) rtol = 1.0e-9
+
+    # Through the fallback: at 1e307 a century apart, Newton's derivative sum overflows. The period
+    # is then 100 years, so the rate is (1 + i)^(1/100) - 1 for i = -a₂/a₁ - 1.
+    century(i) = (1 + i)^(1 / 100) - 1
+    @test ForwardDiff.hessian(x -> rate(irr(1.0e305 .* x, [0.0, 100.0])), a) ≈
+        ForwardDiff.hessian(x -> century(-x[2] / x[1] - 1), a) rtol = 1.0e-9
 
     # The rate doesn't depend on the notional, so neither do its Hessians.
     for n in (1.0e-300, 1.0e300), t in ([0.0, 1.0], [1000.0, 1001.0])

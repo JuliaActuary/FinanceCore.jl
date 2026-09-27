@@ -32,10 +32,10 @@ function internal_rate_of_return(cashflows::AbstractVector{<:Cashflow})
     flows = ((amount(cf), timepoint(cf)) for cf in cashflows)
     if _ad_depth_flows(flows) > 0
         primal = [Cashflow(_primal(amount(cf)), _primal(timepoint(cf))) for cf in cashflows]
-        r0 = _irr_force(r -> __pv_div_pv′(r, primal), ((amount(cf), timepoint(cf)) for cf in primal))
+        r0 = _irr_force(_pv_ratio(primal), ((amount(cf), timepoint(cf)) for cf in primal))
         return _irr_dual(r0, flows)
     end
-    return _irr(r -> __pv_div_pv′(r, cashflows), flows)
+    return _irr(_pv_ratio(cashflows), flows)
 end
 
 function internal_rate_of_return(cashflows, times)
@@ -43,10 +43,30 @@ function internal_rate_of_return(cashflows, times)
     flows = zip(cashflows, times)
     if _ad_depth_flows(flows) > 0
         pcfs, ptimes = _primal_values(cashflows), _primal_values(times)
-        r0 = _irr_force(r -> __pv_div_pv′(r, pcfs, ptimes), zip(pcfs, ptimes))
+        r0 = _irr_force(_pv_ratio(pcfs, ptimes), zip(pcfs, ptimes))
         return _irr_dual(r0, flows)
     end
-    return _irr(r -> __pv_div_pv′(r, cashflows, times), flows)
+    return _irr(_pv_ratio(cashflows, times), flows)
+end
+
+# Newton's evaluator for each input form. It solves Σ cf⋅exp(-r⋅(t - t0)) = 0, which has the roots
+# of the pricing equation (the factor exp(r⋅t0) is positive), with the origin `t0` at the first
+# nonzero amount's time. From time 0, flows that are all near t = 1000 move Newton by about 1/1000
+# per step, and it runs out of iterations. For flows that start at time 0 the origin is 0, and the
+# arithmetic is unchanged. The origin is computed here, once, so the closure captures a plain value.
+function _pv_ratio(cashflows, times)
+    t0 = _newton_origin(zip(cashflows, times), _zero_time(eltype(times)))
+    return r -> __pv_div_pv′(r, cashflows, times, t0)
+end
+function _pv_ratio(cashflows::AbstractVector{<:Cashflow})
+    t0 = _newton_origin(((amount(cf), timepoint(cf)) for cf in cashflows), _zero_time(eltype(cashflows)))
+    return r -> __pv_div_pv′(r, cashflows, t0)
+end
+function _newton_origin(flows, zero_time)
+    for (cf, t) in flows
+        iszero(cf) || return t
+    end
+    return zero_time
 end
 
 # The input adapters are lazy: Newton keeps its representation-specific kernel,
@@ -177,17 +197,17 @@ _vectorization_backend(r, cashflows::AbstractVector{C}) where {C <: Cashflow} = 
 
 # an internal function which calculates the
 # present value and it's derivative in one pass
-# for use in newton's method
+# for use in newton's method, with times measured from the origin `t0` (see `_pv_ratio`)
 #
 # Dispatches to the appropriate backend based on the input types. The
 # LoopVectorization extension opts supported dense floating-point arrays into its
 # turbo kernel without changing process-global state.
-function __pv_div_pv′(r, cashflows, times)
-    return __pv_div_pv′(_vectorization_backend(r, cashflows, times), r, cashflows, times)
+function __pv_div_pv′(r, cashflows, times, t0)
+    return __pv_div_pv′(_vectorization_backend(r, cashflows, times), r, cashflows, times, t0)
 end
 
-function __pv_div_pv′(r, cashflows::AbstractVector{C}) where {C <: Cashflow}
-    return __pv_div_pv′(_vectorization_backend(r, cashflows), r, cashflows)
+function __pv_div_pv′(r, cashflows::AbstractVector{C}, t0) where {C <: Cashflow}
+    return __pv_div_pv′(_vectorization_backend(r, cashflows), r, cashflows, t0)
 end
 
 # Newton's step from a kernel's sums. A derivative sum that overflowed, or underflowed into the
@@ -197,13 +217,13 @@ end
 _newton_step(n, d) = isfinite(d) && abs(d) >= floatmin(_primal(d)) ? n / d : oftype(n / d, NaN)
 
 # Base @simd implementation
-function __pv_div_pv′(::SimdBackend, r, cashflows, times)
+function __pv_div_pv′(::SimdBackend, r, cashflows, times, t0)
     T = promote_type(typeof(r), eltype(cashflows), eltype(times))
     n = zero(T)
     d = zero(T)
     @inbounds @simd for i in eachindex(cashflows)
         cf = cashflows[i]
-        t = times[i]
+        t = times[i] - t0
         a = cf * exp(-r * t)
         n += a
         d += a * -t
@@ -220,13 +240,14 @@ function __pv_div_pv′(
         ::SimdBackend,
         r,
         cashflows::AbstractVector{C},
+        t0,
     ) where {C <: Cashflow}
     S = _irr_accumulator_type(r, C)
     n = zero(S)
     d = zero(S)
     @inbounds @simd for i in eachindex(cashflows)
         cf = amount(cashflows[i])
-        t = timepoint(cashflows[i])
+        t = timepoint(cashflows[i]) - t0
         a = cf * exp(-r * t)
         n += a
         d += a * -t
