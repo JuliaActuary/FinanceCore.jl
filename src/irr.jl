@@ -190,6 +190,12 @@ function __pv_div_pv′(r, cashflows::AbstractVector{C}) where {C <: Cashflow}
     return __pv_div_pv′(_vectorization_backend(r, cashflows), r, cashflows)
 end
 
+# Newton's step from a kernel's sums. A derivative sum that overflowed, or underflowed into the
+# subnormals, has lost its precision: huge amounts make it infinite and the step 0, and tiny amounts
+# far from time zero leave a ratio of a few bits, either of which Newton would accept as a root.
+# NaN stops Newton, and the robust solver, which scales the amounts, solves instead.
+_newton_step(n, d) = isfinite(d) && abs(d) >= floatmin(_primal(d)) ? n / d : oftype(n / d, NaN)
+
 # Base @simd implementation
 function __pv_div_pv′(::SimdBackend, r, cashflows, times)
     T = promote_type(typeof(r), eltype(cashflows), eltype(times))
@@ -202,7 +208,7 @@ function __pv_div_pv′(::SimdBackend, r, cashflows, times)
         n += a
         d += a * -t
     end
-    return n / d
+    return _newton_step(n, d)
 end
 
 _irr_accumulator_type(r, ::Type{<:Cashflow}) = typeof(r)
@@ -225,7 +231,7 @@ function __pv_div_pv′(
         n += a
         d += a * -t
     end
-    return n / d
+    return _newton_step(n, d)
 end
 
 """

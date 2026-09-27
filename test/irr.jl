@@ -200,6 +200,17 @@ end
     @test wrapped ≈ numeric
 end
 
+@testset "irr at extreme notionals" begin
+    # Newton works on unscaled amounts. At 1e307 its derivative sum overflows, and at 1e-300 a
+    # thousand years out its sums underflow into the subnormals; either way it used to accept a
+    # wrong root. The robust solver, which scales the amounts, finds the rate instead.
+    for cfs in ((1.0e307 .* [-1.0, 1.1], [0.0, 100.0]), (1.0e-300 .* [-100.0, 110.0], [1000.0, 1001.0]))
+        expected = exp(log(-cfs[1][2] / cfs[1][1]) / (cfs[2][2] - cfs[2][1])) - 1
+        @test rate(irr(cfs...)) ≈ expected rtol = 1.0e-12
+        @test rate(irr(Cashflow.(cfs...))) ≈ expected rtol = 1.0e-12
+    end
+end
+
 @testset "irr derivatives through the fallback solver" begin
     # Newton cannot finish these cashflows (every discount factor underflows from its
     # starting point), so the fallback solves on primal values and one implicit-function
@@ -316,8 +327,7 @@ end
         ForwardDiff.hessian(quadratic, a3) rtol = 1.0e-9
 
     # The rate doesn't depend on the notional, so neither do its Hessians.
-    for n in (1.0e-300, 1.0e300)
-        t = [0.0, 1.0]
+    for n in (1.0e-300, 1.0e300), t in ([0.0, 1.0], [1000.0, 1001.0])
         @test ForwardDiff.hessian(y -> rate(irr(n .* y, t)), a) ≈ by_amounts rtol = 1.0e-12
         @test ForwardDiff.hessian(x -> rate(irr(n .* a, x)), t) ≈
             ForwardDiff.hessian(x -> exp(log(1.1) / (x[2] - x[1])) - 1, t) rtol = 1.0e-12

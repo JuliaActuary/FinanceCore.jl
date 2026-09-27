@@ -34,7 +34,7 @@ function FinanceCore.__pv_div_pv′(
         n += a
         d += a * -t
     end
-    return n / d
+    return FinanceCore._newton_step(n, d)
 end
 
 end

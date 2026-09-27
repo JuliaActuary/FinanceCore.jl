@@ -42,4 +42,8 @@ using LoopVectorization
     @test isnothing(irr([0.0, 0.0, 0.0]))
     @test isnothing(irr([100.0, 100.0], [1.0, 1.0]))
     @test irr([Cashflow(-100.0, 0.0), Cashflow(110.0, 1.0)]) ≈ Periodic(0.1, 1)
+    # the turbo kernel also hands an overflowed derivative sum to the robust solver
+    @test FinanceCore._vectorization_backend(0.1, [-1.0e307, 1.1e307], [0.0, 100.0]) isa
+        FinanceCore.TurboBackend
+    @test rate(irr([-1.0e307, 1.1e307], [0.0, 100.0])) ≈ 1.1^(1 / 100) - 1 rtol = 1.0e-12
 end
