@@ -123,6 +123,7 @@ end
         FinanceCore.SimdBackend(),
         0.1f0,
         cashflows,
+        nothing,
         0.0f0,
     )
     @test cashflow_result isa Float32
@@ -151,6 +152,24 @@ end
     @test FinanceCore._primal_values(Real[dual_cfs[1], 2.0]) == [-100.0, 2.0]
 end
 
+@testset "irr of abstract element types" begin
+    # The amounts-and-times kernel typed its sums `zero(promote_type(...))`, which threw for an
+    # element type of `Any` (FinanceCore 2.7 returned 10% for all of these). Both input forms now
+    # share one kernel, whose sums fall back to the rate's type, as the Cashflow kernel's did.
+    expected = irr([-100, 110], [0, 1])
+    @test expected ≈ Periodic(0.1, 1)
+    @test irr(Any[-100, 110], [0, 1]) == expected
+    @test irr([-100.0, 110.0], Any[0, 1]) == expected
+    @test irr(Any[-100, 110], Any[0, 1]) == expected
+    @test irr(Any[-100, 110], 0:1) == expected
+    @test irr(Real[-100, 110.0], Real[0, 1]) == expected
+    @test irr(Cashflow[Cashflow(-100, 0), Cashflow(110.0, 1.0)]) == expected
+    # a concrete Cashflow type with abstract fields, including dual numbers in them
+    @test irr([Cashflow{Real, Real}(-100, 0), Cashflow{Real, Real}(110, 1)]) == expected
+    f(a) = rate(irr([Cashflow{Real, Real}(a[1], 0), Cashflow{Real, Real}(a[2], 1)]))
+    @test ForwardDiff.gradient(f, [-100.0, 110.0]) ≈ [0.011, 0.01]
+end
+
 @testset "Newton's time origin" begin
     # Newton solves Σ cf⋅exp(-r⋅(t - t0)) with t0 at the first nonzero amount, so cashflows far from
     # time 0 converge as the same cashflows near it do (from time 0 it moved about 1/t per step,
@@ -159,7 +178,7 @@ end
     t = collect(0.0:29.0)
     for shift in (50.0, 1000.0, 1.0e5)
         @test !isnothing(FinanceCore._irr_newton(FinanceCore._pv_ratio(cfs, t .+ shift)))
-        @test !isnothing(FinanceCore._irr_newton(FinanceCore._pv_ratio(Cashflow.(cfs, t .+ shift))))
+        @test !isnothing(FinanceCore._irr_newton(FinanceCore._pv_ratio(Cashflow.(cfs, t .+ shift), nothing)))
         @test irr(cfs, t .+ shift) ≈ irr(cfs, t) rtol = 1.0e-12
         @test irr(Cashflow.(cfs, t .+ shift)) ≈ irr(cfs, t) rtol = 1.0e-12
     end

@@ -28,39 +28,39 @@ function internal_rate_of_return(cashflows::AbstractVector{<:Real})
     return internal_rate_of_return(cashflows, 0:(length(cashflows) - 1))
 end
 
-function internal_rate_of_return(cashflows::AbstractVector{<:Cashflow})
-    flows = ((amount(cf), timepoint(cf)) for cf in cashflows)
-    if _ad_depth_flows(flows) > 0
-        primal = [Cashflow(_primal(amount(cf)), _primal(timepoint(cf))) for cf in cashflows]
-        r0 = _irr_force(_pv_ratio(primal), ((amount(cf), timepoint(cf)) for cf in primal))
-        return _irr_dual(r0, flows)
-    end
-    return _irr(_pv_ratio(cashflows), flows)
-end
+internal_rate_of_return(cashflows::AbstractVector{<:Cashflow}) = _irr(cashflows, nothing)
 
 function internal_rate_of_return(cashflows, times)
     @assert length(cashflows) <= length(times)
-    flows = zip(cashflows, times)
-    if _ad_depth_flows(flows) > 0
-        pcfs, ptimes = _primal_values(cashflows), _primal_values(times)
-        r0 = _irr_force(_pv_ratio(pcfs, ptimes), zip(pcfs, ptimes))
-        return _irr_dual(r0, flows)
-    end
-    return _irr(_pv_ratio(cashflows, times), flows)
+    return _irr(cashflows, times)
 end
 
-# Newton's evaluator for each input form. It solves Σ cf⋅exp(-r⋅(t - t0)) = 0, which has the roots
-# of the pricing equation (the factor exp(r⋅t0) is positive), with the origin `t0` at the first
-# nonzero amount's time. From time 0, flows that are all near t = 1000 move Newton by about 1/1000
-# per step, and it runs out of iterations. For flows that start at time 0 the origin is 0, and the
-# arithmetic is unchanged. The origin is computed here, once, so the closure captures a plain value.
-function _pv_ratio(cashflows, times)
-    t0 = _newton_origin(zip(cashflows, times), _zero_time(eltype(times)))
-    return r -> __pv_div_pv′(r, cashflows, times, t0)
+# An IRR input is amounts with their times, or Cashflows, which carry their own (`times` is then
+# `nothing`). `_flow` reads the amount and time of flow `i` in either form, so the solvers are shared.
+Base.@propagate_inbounds _flow(cashflows, times, i) = (cashflows[i], times[i])
+Base.@propagate_inbounds _flow(cashflows, ::Nothing, i) = (amount(cashflows[i]), timepoint(cashflows[i]))
+_flows(cashflows, times) = (_flow(cashflows, times, i) for i in eachindex(cashflows))
+
+# Dual inputs are solved on their primal values, and implicit-function steps give the root its
+# partials (see `_irr_dual`).
+function _irr(cashflows, times)
+    flows = _flows(cashflows, times)
+    if _ad_depth_flows(flows) > 0
+        pcfs, ptimes = _primal_values(cashflows), _primal_values(times)
+        return _irr_dual(_irr_force(_pv_ratio(pcfs, ptimes), _flows(pcfs, ptimes)), flows)
+    end
+    r = _irr_force(_pv_ratio(cashflows, times), flows)
+    return isnothing(r) ? nothing : _periodic_from_force(r)
 end
-function _pv_ratio(cashflows::AbstractVector{<:Cashflow})
-    t0 = _newton_origin(((amount(cf), timepoint(cf)) for cf in cashflows), _zero_time(eltype(cashflows)))
-    return r -> __pv_div_pv′(r, cashflows, t0)
+
+# Newton's evaluator. It solves Σ cf⋅exp(-r⋅(t - t0)) = 0, which has the roots of the pricing
+# equation (the factor exp(r⋅t0) is positive), with the origin `t0` at the first nonzero amount's
+# time. From time 0, flows that are all near t = 1000 move Newton by about 1/1000 per step, and it
+# runs out of iterations. For flows that start at time 0 the origin is 0, and the arithmetic is
+# unchanged. The origin is computed here, once, so the closure captures a plain value.
+function _pv_ratio(cashflows, times)
+    t0 = _newton_origin(_flows(cashflows, times), _zero_time(last(_flow_types(cashflows, times))))
+    return r -> __pv_div_pv′(r, cashflows, times, t0)
 end
 function _newton_origin(flows, zero_time)
     for (cf, t) in flows
@@ -69,13 +69,7 @@ function _newton_origin(flows, zero_time)
     return zero_time
 end
 
-# The input adapters are lazy: Newton keeps its representation-specific kernel,
-# while fallback policy operates on the same (amount, time) stream for both forms.
-function _irr(pv_ratio::F, flows) where {F}
-    r = _irr_force(pv_ratio, flows)
-    return isnothing(r) ? nothing : _periodic_from_force(r)
-end
-
+# Newton first, then the robust solver; both return a force of interest.
 function _irr_force(pv_ratio::F, flows) where {F}
     r = _irr_newton(pv_ratio)
     isnothing(r) && (r = _irr_robust(flows))
@@ -139,13 +133,19 @@ _ad_depth(::Type) = 0
 _ad_depth(x) = _ad_depth(typeof(x))
 _is_exact_zero(x) = iszero(x)
 
+_primal(cf::Cashflow) = Cashflow(_primal(amount(cf)), _primal(timepoint(cf)))
+
 # Dual layers in any amount or time of an IRR input (0 for plain numbers).
 _ad_depth_flows(flows) = maximum(p -> max(_ad_depth(first(p)), _ad_depth(last(p))), flows; init = 0)
 # A copy without dual partials, or the input itself when it has none (so that, for example, a
 # range of timepoints keeps the solver's range kernel).
 # A concrete element type decides this without a scan, and keeps the result's type inferable.
+# Cashflows are always copied: they are then the whole input, so they carry the partials (and a
+# concrete `Cashflow{Real, Real}` can still hold dual numbers). Their times are `nothing`.
 _primal_values(v) = isconcretetype(eltype(v)) ? (_ad_depth(eltype(v)) == 0 ? v : map(_primal, v)) :
     all(x -> _ad_depth(x) == 0, v) ? v : map(_primal, v)
+_primal_values(cashflows::AbstractVector{<:Cashflow}) = map(_primal, cashflows)
+_primal_values(::Nothing) = nothing
 
 # The root of dual inputs: `r0` solves their primal values (through both solver stages), and
 # implicit-function steps give it partials. Exact zeros are dropped, as in the fallback. A zero
@@ -206,7 +206,6 @@ struct SimdBackend <: VectorizationBackend end
 struct TurboBackend <: VectorizationBackend end
 
 _vectorization_backend(r, cashflows, times) = SimdBackend()
-_vectorization_backend(r, cashflows::AbstractVector{C}) where {C <: Cashflow} = SimdBackend()
 
 # an internal function which calculates the
 # present value and it's derivative in one pass
@@ -219,48 +218,32 @@ function __pv_div_pv′(r, cashflows, times, t0)
     return __pv_div_pv′(_vectorization_backend(r, cashflows, times), r, cashflows, times, t0)
 end
 
-function __pv_div_pv′(r, cashflows::AbstractVector{C}, t0) where {C <: Cashflow}
-    return __pv_div_pv′(_vectorization_backend(r, cashflows), r, cashflows, t0)
-end
-
 # Newton's step from a kernel's sums. A derivative sum that overflowed, or underflowed into the
 # subnormals, has lost its precision: huge amounts make it infinite and the step 0, and tiny amounts
 # far from time zero leave a ratio of a few bits, either of which Newton would accept as a root.
 # NaN stops Newton, and the robust solver, which scales the amounts, solves instead.
 _newton_step(n, d) = isfinite(d) && abs(d) >= floatmin(_primal(d)) ? n / d : oftype(n / d, NaN)
 
+# The element types of the amounts and the times.
+_flow_types(cashflows, times) = (eltype(cashflows), eltype(times))
+_flow_types(::AbstractVector{Cashflow{A, T}}, ::Nothing) where {A, T} = (A, T)
+_flow_types(cashflows, ::Nothing) = (Any, Any)
+
+# The sums take the type of the terms, or the rate's when an abstract element type (`Any[]`, a
+# vector of mixed Cashflows) doesn't determine it.
+function _irr_accumulator_type(r, ::Type{A}, ::Type{T}) where {A, T}
+    S = promote_type(typeof(r), A, T)
+    return isconcretetype(S) ? S : typeof(r)
+end
+
 # Base @simd implementation
 function __pv_div_pv′(::SimdBackend, r, cashflows, times, t0)
-    T = promote_type(typeof(r), eltype(cashflows), eltype(times))
-    n = zero(T)
-    d = zero(T)
-    @inbounds @simd for i in eachindex(cashflows)
-        cf = cashflows[i]
-        t = _elapsed(times[i], t0)
-        a = cf * exp(-r * t)
-        n += a
-        d += a * -t
-    end
-    return _newton_step(n, d)
-end
-
-_irr_accumulator_type(r, ::Type{<:Cashflow}) = typeof(r)
-function _irr_accumulator_type(r, ::Type{Cashflow{A, T}}) where {A, T}
-    return promote_type(typeof(r), A, T)
-end
-
-function __pv_div_pv′(
-        ::SimdBackend,
-        r,
-        cashflows::AbstractVector{C},
-        t0,
-    ) where {C <: Cashflow}
-    S = _irr_accumulator_type(r, C)
+    S = _irr_accumulator_type(r, _flow_types(cashflows, times)...)
     n = zero(S)
     d = zero(S)
     @inbounds @simd for i in eachindex(cashflows)
-        cf = amount(cashflows[i])
-        t = _elapsed(timepoint(cashflows[i]), t0)
+        cf, τ = _flow(cashflows, times, i)
+        t = _elapsed(τ, t0)
         a = cf * exp(-r * t)
         n += a
         d += a * -t

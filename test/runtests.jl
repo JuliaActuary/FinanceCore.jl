@@ -29,6 +29,7 @@ using LoopVectorization
     @test FinanceCore._vectorization_backend(
         0.1,
         [Cashflow(-100.0, 0.0), Cashflow(110.0, 1.0)],
+        nothing,
     ) isa FinanceCore.SimdBackend
 
     cfs = [-100.0, 110.0]
