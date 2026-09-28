@@ -144,8 +144,8 @@ end
     f(x) = rate(irr(x))
     @test ForwardDiff.gradient(f, [-100.0, 110.0]) ≈ [0.011, 0.01]
 
-    # Primal copies are decided by a concrete element type, so they are inferable; an abstract
-    # element type is scanned.
+    # Primal copies are decided by a concrete element type, so they are inferable; a vector of an
+    # abstract element type is copied.
     @test @inferred(FinanceCore._primal_values(dual_cfs)) == [-100.0, 110.0]
     plain = [1.0, 2.0]
     @test FinanceCore._primal_values(plain) === plain

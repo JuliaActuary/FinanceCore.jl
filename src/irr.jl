@@ -42,12 +42,14 @@ Base.@propagate_inbounds _flow(cashflows, ::Nothing, i) = (amount(cashflows[i]),
 _flows(cashflows, times) = (_flow(cashflows, times, i) for i in eachindex(cashflows))
 
 # Dual inputs are solved on their primal values, and implicit-function steps give the root its
-# partials (see `_irr_dual`).
+# partials (see `_irr_implicit`).
 function _irr(cashflows, times)
     flows = _flows(cashflows, times)
     if _ad_depth_flows(flows) > 0
         pcfs, ptimes = _primal_values(cashflows), _primal_values(times)
-        return _irr_dual(_irr_force(pcfs, ptimes), flows)
+        r0 = _irr_force(pcfs, ptimes)
+        isnothing(r0) && return nothing
+        return _periodic_from_force(_irr_implicit(r0, flows, _flows(pcfs, ptimes)))
     end
     r = _irr_force(cashflows, times)
     return isnothing(r) ? nothing : _periodic_from_force(r)
@@ -128,50 +130,41 @@ _primal(cf::Cashflow) = Cashflow(_primal(amount(cf)), _primal(timepoint(cf)))
 
 # Dual layers in any amount or time of an IRR input (0 for plain numbers).
 _ad_depth_flows(flows) = maximum(p -> max(_ad_depth(first(p)), _ad_depth(last(p))), flows; init = 0)
-# A copy without dual partials, or the input itself when it has none (so that, for example, a
-# range of timepoints keeps the solver's range kernel).
-# A concrete element type decides this without a scan, and keeps the result's type inferable.
-# Cashflows are always copied: they are then the whole input, so they carry the partials (and a
-# concrete `Cashflow{Real, Real}` can still hold dual numbers). Their times are `nothing`.
-_primal_values(v) = isconcretetype(eltype(v)) ? (_ad_depth(eltype(v)) == 0 ? v : map(_primal, v)) :
-    all(x -> _ad_depth(x) == 0, v) ? v : map(_primal, v)
+# A copy without dual partials, or the input itself when its concrete element type has none (so
+# that, for example, a range of timepoints keeps the solver's range kernel). The element type
+# decides, so the result's type is inferable. Cashflows are always copied: they are then the whole
+# input, so they carry the partials (and a concrete `Cashflow{Real, Real}` can still hold dual
+# numbers). Their times are `nothing`.
+_primal_values(v) = isconcretetype(eltype(v)) && _ad_depth(eltype(v)) == 0 ? v : map(_primal, v)
 _primal_values(cashflows::AbstractVector{<:Cashflow}) = map(_primal, cashflows)
 _primal_values(::Nothing) = nothing
 
-# The root of dual inputs: `r0` solves their primal values (through both solver stages), and
-# implicit-function steps give it partials. Exact zeros are dropped, as in the fallback. A zero
-# amount that carries partials still enters the steps, but not the time origin, the scale or the
-# slope, which use the primal nonzero amounts: a zero far from the origin contributes no slope.
-function _irr_dual(r0, flows)
-    isnothing(r0) && return nothing
-    nonzero = Iterators.filter(p -> !_is_exact_zero(first(p)), flows)
-    M, t0 = _irr_scale_origin(Iterators.filter(p -> !iszero(first(p)), ((_primal(cf), _primal(t)) for (cf, t) in nonzero)))
-    return _periodic_from_force(_irr_implicit(r0, nonzero, M, t0))
-end
-
-# `r0` solves the primal residual, so it carries no partials. The implicit-function step
-# `r - (g(r) - g₀) / g′` gives it the first-order partials `dr = -(∂g/∂θ) / (∂g/∂r)`, where `g` is
-# the residual scaled by `M` and shifted to the time origin `t0` with the dual inputs, `g₀` its
-# primal value at `r0` and `g′` its primal slope there. Repeating the step with the dual iterate
-# corrects one more order each time, so one step per dual layer gives the partials of nested duals
-# (a Hessian takes two); every step keeps the value `r0` exactly. Each term `cf⋅exp(-r⋅τ)/M` takes
+# `r0` solves the primal residual of the dual `flows`, whose primal values are `primal_flows`, so it
+# carries no partials. The implicit-function step `r - (g(r) - g₀) / g′` gives it the first-order
+# partials `dr = -(∂g/∂θ) / (∂g/∂r)`, where `g` is the residual scaled by `M` and shifted to the
+# time origin `t0` with the dual inputs, `g₀` its primal value at `r0` and `g′` its primal slope
+# there. Repeating the step with the dual iterate corrects one more order each time, so one step per
+# dual layer gives the partials of nested duals (a Hessian takes two); every step keeps the value
+# `r0` exactly. Exact zeros are dropped, as in the fallback. A zero amount that carries partials
+# still enters the steps, but not the time origin, the scale or the slope, which use the primal
+# nonzero amounts: a zero far from the origin contributes no slope. Each term `cf⋅exp(-r⋅τ)/M` takes
 # the scale where it can't overflow: on the amount first, since for a tiny notional
 # `exp(-log(M))` alone exceeds floatmax, or in the exponent when `exp(-r⋅τ)` already overflows, as
 # for a zero amount far before the origin. The form is chosen from primal values, so every step
 # evaluates the same one. A slope that vanishes relative to the size of its terms (as at a
 # repeated root) throws rather than return wrong partials.
-function _irr_implicit(r0, flows, M, t0)
+function _irr_implicit(r0, flows, primal_flows)
+    nonzero = _nonzero(primal_flows)
+    M, t0 = _irr_scale_origin(nonzero)
     logM = log(M)
     # exp(x) is finite below log(floatmax)
     finite_below = log(floatmax(typeof(r0)))
     term(cf, τ, r) = -r0 * _primal(τ) < finite_below ? cf / M * exp(-r * τ) : cf * exp(-r * τ - logM)
-    g(r) = sum(term(cf, _elapsed(t, t0), r) for (cf, t) in flows)
+    g(r) = sum(term(cf, _elapsed(t, t0), r) for (cf, t) in flows if !_is_exact_zero(cf))
     slope = zero(r0)
     scale = zero(r0)
-    for (cf, t) in flows
-        a = _primal(cf)
-        iszero(a) && continue
-        τ = _elapsed(_primal(t), t0)
+    for (a, t) in nonzero
+        τ = _elapsed(t, t0)
         x = τ * term(a, τ, r0)
         slope -= x
         scale += abs(x)
