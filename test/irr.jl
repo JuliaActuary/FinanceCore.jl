@@ -174,6 +174,41 @@ end
     @test FinanceCore._newton_origin(zip(Float64[], Float32[]), 0.0f0) === 0.0f0
 end
 
+@testset "integer times of any width" begin
+    # Times from the origin are taken in floating point: an unsigned time wrapped on negation in
+    # Newton's derivative sum, and on subtraction from a later origin; narrow times overflowed.
+    for T in (UInt, UInt16, Int16)
+        @test rate(irr([-100.0, 110.0], T[1000, 1001])) ≈ 0.1 rtol = 1.0e-12
+        @test rate(irr(Cashflow.([-100.0, 110.0], T[1000, 1001]))) ≈ 0.1 rtol = 1.0e-12
+        @test rate(irr([110.0, -100.0], T[1001, 1000])) ≈ 0.1 rtol = 1.0e-12
+        @test rate(irr([0.0, -100.0, 110.0], T[0, 1000, 1001])) ≈ 0.1 rtol = 1.0e-12
+    end
+    for T in (UInt8, Int8)
+        @test rate(irr([110.0, -100.0], T[101, 100])) ≈ 0.1 rtol = 1.0e-12
+    end
+    @test rate(irr([-100.0, 100.0 * 1.1^200], Int8[-100, 100])) ≈ 0.1 rtol = 1.0e-12
+    # the robust solver, through a root Newton can't reach from its seed
+    @test FinanceCore._irr_robust(zip([110.0, -100.0], UInt[1001, 1000])) ≈ log(1.1) rtol = 1.0e-12
+    # a zero amount with partials before the origin still enters the implicit-function step
+    ∇(times) = ForwardDiff.gradient(x -> rate(irr(x, times)), [0.0, -100.0, 110.0])
+    @test ∇(UInt[0, 1000, 1001]) ≈ ∇([0.0, 1000.0, 1001.0]) rtol = 1.0e-12
+    # Large origins: the difference is exact before its one rounding (2^53 + 1 is not a Float64).
+    for times in ([2^53 + 1, 2^53 + 2], [2^53, 2^53 + 1], UInt64[typemax(UInt64) - 1, typemax(UInt64)])
+        @test rate(irr([-100.0, 110.0], times)) ≈ 0.1 rtol = 1.0e-12
+        @test rate(irr(Cashflow.([-100.0, 110.0], times))) ≈ 0.1 rtol = 1.0e-12
+        @test rate(irr([110.0, -100.0], reverse(times))) ≈ 0.1 rtol = 1.0e-12
+    end
+    @test FinanceCore._irr_robust(zip([110.0, -100.0], [2^53 + 2, 2^53 + 1])) ≈ log(1.1) rtol = 1.0e-12
+    @test ∇([2^53, 2^53 + 1000, 2^53 + 1001]) ≈ ∇([0.0, 1000.0, 1001.0]) rtol = 1.0e-12
+    @test FinanceCore._elapsed(2^53 + 2, 2^53 + 1) === 1.0
+    @test FinanceCore._elapsed(UInt(1), UInt(3)) === -2.0
+    @test FinanceCore._elapsed(Int8(100), Int8(-100)) === 200.0
+    @test FinanceCore._elapsed(big(2)^80 + 1, big(2)^80) == 1
+    # other times subtract in their own type
+    @test FinanceCore._elapsed(1.5, 0.5) === 1.0
+    @test FinanceCore._elapsed(3 // 2, 1 // 2) === 1 // 1
+end
+
 @testset "IRR input representations share solver behavior" begin
     cases = (
         # Newton converges for ordinary numeric types and fractional timepoints.

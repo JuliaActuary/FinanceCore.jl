@@ -28,7 +28,9 @@ function FinanceCore.__pv_div_pv′(
     ) where {T <: TurboFloat}
     n = zero(T)
     d = zero(T)
-    s = T(t0)
+    # The origin in the times' own type: a range of integer times is differenced in integers (exact
+    # for any span below 2^63), not converted to floating point first, which rounds beyond 2^53.
+    s = eltype(times)(t0)
     @turbo for i in eachindex(cashflows)
         cf = cashflows[i]
         t = times[i] - s

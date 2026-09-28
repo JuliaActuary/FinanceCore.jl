@@ -41,6 +41,10 @@ using LoopVectorization
     @test FinanceCore.__pv_div_pv′(FinanceCore.TurboBackend(), 0.1, cfs, far, 1000.0) ≈ simd_result rtol = 1.0e-13
     @test FinanceCore.__pv_div_pv′(FinanceCore.SimdBackend(), 0.1, cfs, far, 1000.0) ≈ simd_result rtol = 1.0e-13
     @test rate(irr(cfs, far)) ≈ 0.1
+    # a range of integer times is differenced in integers: beyond 2^53 a one-unit step stays one unit
+    @test FinanceCore._vectorization_backend(0.1, cfs, (2^53 + 1):(2^53 + 2)) isa FinanceCore.TurboBackend
+    @test rate(irr(cfs, (2^53 + 1):(2^53 + 2))) ≈ 0.1 rtol = 1.0e-12
+    @test rate(irr(cfs, (2^53):(2^53 + 1))) ≈ 0.1 rtol = 1.0e-12
 
     @test irr([-100, 110]) ≈ Periodic(0.1, 1)
     @test irr([-100.0, 110.0], [0.0, 1.0]) ≈ Periodic(0.1, 1)

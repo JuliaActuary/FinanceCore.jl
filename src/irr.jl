@@ -111,7 +111,7 @@ function _irr_robust(flows)
     # overflow/underflow from obscuring the residual. Both the root search and
     # its acceptance check use the same discounted terms.
     M, t0 = _irr_scale_origin(nonzero)
-    terms(r) = (cf / M * exp(-r * (t - t0)) for (cf, t) in nonzero)
+    terms(r) = (cf / M * exp(-r * _elapsed(t, t0)) for (cf, t) in nonzero)
     # Continuous-rate space avoids the periodic singularity at i = -1.
     roots = Roots.find_zeros(r -> sum(terms(r)), -5.0, 3.0)
     filter!(r -> _is_irr_root(r, terms(r)), roots)
@@ -119,6 +119,17 @@ function _irr_robust(flows)
 end
 
 _irr_scale_origin(flows) = (maximum(p -> abs(first(p)), flows), minimum(last, flows))
+
+# The time from the origin `t0`, exact until a single rounding. Integer times are differenced in the
+# unsigned type of their width, the larger minus the smaller, and converted to floating point once:
+# in their own type the subtraction or a kernel's negation can wrap (an unsigned time before the
+# origin, a narrow signed span), and converting each endpoint first rounds times beyond 2^53. Other
+# times subtract in their own type.
+_elapsed(t, t0) = t - t0
+_elapsed(t::Integer, t0::Integer) = _integer_elapsed(promote(t, t0)...)
+_integer_elapsed(t::T, t0::T) where {T <: Base.BitInteger} =
+    t >= t0 ? float(unsigned(t) - unsigned(t0)) : -float(unsigned(t0) - unsigned(t))
+_integer_elapsed(t, t0) = float(t - t0)
 
 # Dual-number hooks, defined for ForwardDiff by FinanceCoreForwardDiffExt: `_primal` strips
 # every dual layer, `_ad_depth` counts the layers, and `_is_exact_zero` also requires zero
@@ -163,13 +174,13 @@ function _irr_implicit(r0, flows, M, t0)
     # exp(x) is finite below log(floatmax)
     finite_below = log(floatmax(typeof(r0)))
     term(cf, τ, r) = -r0 * _primal(τ) < finite_below ? cf / M * exp(-r * τ) : cf * exp(-r * τ - logM)
-    g(r) = sum(term(cf, t - t0, r) for (cf, t) in flows)
+    g(r) = sum(term(cf, _elapsed(t, t0), r) for (cf, t) in flows)
     slope = zero(r0)
     scale = zero(r0)
     for (cf, t) in flows
         a = _primal(cf)
         iszero(a) && continue
-        τ = _primal(t) - t0
+        τ = _elapsed(_primal(t), t0)
         x = τ * term(a, τ, r0)
         slope -= x
         scale += abs(x)
@@ -225,7 +236,7 @@ function __pv_div_pv′(::SimdBackend, r, cashflows, times, t0)
     d = zero(T)
     @inbounds @simd for i in eachindex(cashflows)
         cf = cashflows[i]
-        t = times[i] - t0
+        t = _elapsed(times[i], t0)
         a = cf * exp(-r * t)
         n += a
         d += a * -t
@@ -249,7 +260,7 @@ function __pv_div_pv′(
     d = zero(S)
     @inbounds @simd for i in eachindex(cashflows)
         cf = amount(cashflows[i])
-        t = timepoint(cashflows[i]) - t0
+        t = _elapsed(timepoint(cashflows[i]), t0)
         a = cf * exp(-r * t)
         n += a
         d += a * -t
