@@ -36,10 +36,14 @@ function internal_rate_of_return(cashflows, times)
 end
 
 # An IRR input is amounts with their times, or Cashflows, which carry their own (`times` is then
-# `nothing`). `_flow` reads the amount and time of flow `i` in either form, so the solvers are shared.
+# `nothing`). In either form, `_flow` reads the amount and time of flow `i` for Newton's kernel, and
+# `_flows` iterates them for everything else, so the solvers are shared. (Iterating rather than
+# indexing lets the compiler drop the scan for dual numbers when the element types rule them out;
+# indexed, a range of times kept a bounds-checked loop.)
 Base.@propagate_inbounds _flow(cashflows, times, i) = (cashflows[i], times[i])
 Base.@propagate_inbounds _flow(cashflows, ::Nothing, i) = (amount(cashflows[i]), timepoint(cashflows[i]))
-_flows(cashflows, times) = (_flow(cashflows, times, i) for i in eachindex(cashflows))
+_flows(cashflows, times) = zip(cashflows, times)
+_flows(cashflows, ::Nothing) = ((amount(cf), timepoint(cf)) for cf in cashflows)
 
 # Dual inputs are solved on their primal values, and implicit-function steps give the root its
 # partials (see `_irr_implicit`).
