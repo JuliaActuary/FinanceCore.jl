@@ -177,20 +177,25 @@ end
     cfs = [-100.0; fill(8.0, 28); 108.0]
     t = collect(0.0:29.0)
     for shift in (50.0, 1000.0, 1.0e5)
-        @test !isnothing(FinanceCore._irr_newton(FinanceCore._pv_ratio(cfs, t .+ shift)))
-        @test !isnothing(FinanceCore._irr_newton(FinanceCore._pv_ratio(Cashflow.(cfs, t .+ shift), nothing)))
+        @test !isnothing(FinanceCore._irr_newton(cfs, t .+ shift, shift))
+        @test !isnothing(FinanceCore._irr_newton(Cashflow.(cfs, t .+ shift), nothing, shift))
+        @test FinanceCore._irr_force(cfs, t .+ shift) === FinanceCore._irr_newton(cfs, t .+ shift, shift)
         @test irr(cfs, t .+ shift) ≈ irr(cfs, t) rtol = 1.0e-12
         @test irr(Cashflow.(cfs, t .+ shift)) ≈ irr(cfs, t) rtol = 1.0e-12
     end
     # flows starting at time 0 keep their arithmetic
-    @test FinanceCore._newton_origin(zip(cfs, t), 0.0) === 0.0
-    # leading zero amounts don't set the origin, and unsorted times work too
-    @test FinanceCore._newton_origin(zip([0.0, -100.0, 110.0], [0.0, 1000.0, 1001.0]), 0.0) === 1000.0
-    @test !isnothing(FinanceCore._irr_newton(FinanceCore._pv_ratio([0.0, -100.0, 110.0], [0.0, 1000.0, 1001.0])))
+    @test FinanceCore._irr_force(cfs, t) === FinanceCore._irr_newton(cfs, t, 0.0)
+    # leading zero amounts don't set the origin (from time 0 Newton doesn't converge), and unsorted
+    # times work too
+    far = ([0.0, -100.0, 110.0], [0.0, 1000.0, 1001.0])
+    @test isnothing(FinanceCore._irr_newton(far..., 0.0))
+    @test !isnothing(FinanceCore._irr_newton(far..., 1000.0))
+    @test FinanceCore._irr_force(far...) === FinanceCore._irr_newton(far..., 1000.0)
     @test irr([110.0, -100.0], [1001.0, 1000.0]) ≈ Periodic(0.1, 1)
-    # the origin of all-zero or empty flows is a zero of the time type
-    @test FinanceCore._newton_origin(zip([0.0, 0.0], [3.0, 4.0]), 0.0) === 0.0
-    @test FinanceCore._newton_origin(zip(Float64[], Float32[]), 0.0f0) === 0.0f0
+    # all-zero and empty flows have no IRR, and neither solver runs
+    @test isnothing(FinanceCore._irr_force([0.0, 0.0], [3.0, 4.0]))
+    @test isnothing(FinanceCore._irr_force(Float64[], Float32[]))
+    @test isnothing(FinanceCore._irr_force(Cashflow{Float64, Float64}[], nothing))
 end
 
 @testset "integer times of any width" begin

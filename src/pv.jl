@@ -61,7 +61,6 @@ _zero_amount(::Type{Cashflow{N, T}}) where {N, T} = Cashflow(_zero_amount(N), _z
 _zero_amount(::Type) = false
 _zero_amount(::Type{Union{}}) = false
 _zero_time(::Type{T}) where {T <: Real} = zero(T)
-_zero_time(::Type{Cashflow{N, T}}) where {N, T} = _zero_time(T)
 _zero_time(::Type) = false
 _zero_time(::Type{Union{}}) = false
 

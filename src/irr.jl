@@ -47,34 +47,27 @@ function _irr(cashflows, times)
     flows = _flows(cashflows, times)
     if _ad_depth_flows(flows) > 0
         pcfs, ptimes = _primal_values(cashflows), _primal_values(times)
-        return _irr_dual(_irr_force(_pv_ratio(pcfs, ptimes), _flows(pcfs, ptimes)), flows)
+        return _irr_dual(_irr_force(pcfs, ptimes), flows)
     end
-    r = _irr_force(_pv_ratio(cashflows, times), flows)
+    r = _irr_force(cashflows, times)
     return isnothing(r) ? nothing : _periodic_from_force(r)
 end
 
-# Newton's evaluator. It solves Σ cf⋅exp(-r⋅(t - t0)) = 0, which has the roots of the pricing
-# equation (the factor exp(r⋅t0) is positive), with the origin `t0` at the first nonzero amount's
-# time. From time 0, flows that are all near t = 1000 move Newton by about 1/1000 per step, and it
-# runs out of iterations. For flows that start at time 0 the origin is 0, and the arithmetic is
-# unchanged. The origin is computed here, once, so the closure captures a plain value.
-function _pv_ratio(cashflows, times)
-    t0 = _newton_origin(_flows(cashflows, times), _zero_time(last(_flow_types(cashflows, times))))
-    return r -> __pv_div_pv′(r, cashflows, times, t0)
-end
-function _newton_origin(flows, zero_time)
-    for (cf, t) in flows
-        iszero(cf) || return t
-    end
-    return zero_time
-end
-
-# Newton first, then the robust solver; both return a force of interest.
-function _irr_force(pv_ratio::F, flows) where {F}
-    r = _irr_newton(pv_ratio)
+# The primal solve, as a force of interest: Newton from the first nonzero amount's time, then the
+# robust solver. An empty or all-zero stream has no identifiable IRR, since every rate solves its
+# identically zero pricing equation.
+function _irr_force(cashflows, times)
+    flows = _flows(cashflows, times)
+    nonzero = _nonzero(flows)
+    isempty(nonzero) && return nothing
+    r = _irr_newton(cashflows, times, last(first(nonzero)))
     isnothing(r) && (r = _irr_robust(flows))
     return r
 end
+
+# Exact-zero amounts contribute nothing at any rate, so they neither set a solver's time origin nor
+# enter the fallback's terms, where a zero far from the origin would evaluate as 0 * Inf.
+_nonzero(flows) = Iterators.filter(p -> !iszero(first(p)), flows)
 
 # Convert a force of interest from the solvers to an annual effective rate.
 # `expm1` preserves nominal rates too small for `exp(r) - 1` to represent.
@@ -92,9 +85,7 @@ function _is_irr_root(r, terms)
 end
 
 function _irr_robust(flows)
-    # Exact-zero amounts contribute nothing at any rate, but they would still set the
-    # time origin below, and a zero term far from that origin evaluates as 0 * Inf.
-    nonzero = Iterators.filter(p -> !iszero(first(p)), flows)
+    nonzero = _nonzero(flows)
     # Cashflows with only one sign cannot have a finite IRR. Keep this scan on
     # the fallback path so ordinary Newton-convergent calls do not pay for it.
     has_positive = any(p -> first(p) > 0, nonzero)
@@ -209,7 +200,7 @@ _vectorization_backend(r, cashflows, times) = SimdBackend()
 
 # an internal function which calculates the
 # present value and it's derivative in one pass
-# for use in newton's method, with times measured from the origin `t0` (see `_pv_ratio`)
+# for use in newton's method, with times measured from the origin `t0` (see `_irr_newton`)
 #
 # Dispatches to the appropriate backend based on the input types. The
 # LoopVectorization extension opts supported dense floating-point arrays into its
@@ -259,11 +250,15 @@ An alias for [`internal_rate_of_return`](@ref).
 """
 const irr = internal_rate_of_return
 
+# Newton's method on Σ cf⋅exp(-r⋅(t - t0)) = 0, which has the roots of the pricing equation (the
+# factor exp(r⋅t0) is positive). With the origin `t0` at the first nonzero amount's time, flows far
+# from time 0 converge as the same flows near it do; measured from time 0, flows that are all near
+# t = 1000 move Newton by about 1/1000 per step, and it runs out of iterations. For flows that
+# start at time 0 the origin is 0, and the arithmetic is unchanged.
 # Modified from Algorithms for Optimization, Kochenderfer and Wheeler, p. 88.
-# The evaluator selects the kernel; termination and failure policy are shared.
-function _irr_newton(pv_ratio, x = 0.001, ε = 1.0e-9, k_max = 100)
+function _irr_newton(cashflows, times, t0, x = 0.001, ε = 1.0e-9, k_max = 100)
     for _ in 1:k_max
-        Δ = pv_ratio(x)
+        Δ = __pv_div_pv′(x, cashflows, times, t0)
         isfinite(Δ) || return nothing
         x -= Δ
         isfinite(x) || return nothing
