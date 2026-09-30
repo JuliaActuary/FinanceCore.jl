@@ -24,17 +24,19 @@ function FinanceCore.__pv_div_pv′(
         r::T,
         cashflows::StridedVector{T},
         times::TurboTimes{T},
+        t0,
     ) where {T <: TurboFloat}
     n = zero(T)
     d = zero(T)
     @turbo for i in eachindex(cashflows)
         cf = cashflows[i]
-        t = times[i]
+        # `_elapsed` here: float times subtract as floats, and an Int range's span fits in Int
+        t = times[i] - t0
         a = cf * exp(-r * t)
         n += a
         d += a * -t
     end
-    return n / d
+    return FinanceCore._newton_step(n, d)
 end
 
 end

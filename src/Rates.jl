@@ -293,25 +293,9 @@ function compounding(r::Rate{<:Any, <:Frequency})
     return r.compounding
 end
 
-# Note: separate methods for each Periodic/Continuous combination, with independent
-# numeric parameters N1/N2, for the same invalidation reasons as `<`/`>` below.
-# A `T <: Rate` fallback that recursed after converting compounding could never
-# align differing numeric types (e.g. Float32 vs Float64, or Dual vs Float64)
-# and would overflow the stack. Tolerance kwargs are forwarded to the scalar
-# `isapprox` so that Base's `rtoldefault` can account for mixed precisions.
-function Base.isapprox(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}; kwargs...) where {N1, N2}
-    return isapprox(rate(a), rate(convert(a.compounding, b)); kwargs...)
-end
-
-function Base.isapprox(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}; kwargs...) where {N1, N2}
-    return isapprox(rate(a), rate(b); kwargs...)
-end
-
-function Base.isapprox(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}; kwargs...) where {N1, N2}
-    return isapprox(rate(a), rate(convert(a.compounding, b)); kwargs...)
-end
-
-function Base.isapprox(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}; kwargs...) where {N1, N2}
+# Compares the nominal rates in `a`'s convention, whatever the numeric types. Tolerance kwargs are
+# forwarded to the scalar `isapprox` so that Base's `rtoldefault` can account for mixed precisions.
+function Base.isapprox(a::Rate, b::Rate; kwargs...)
     return isapprox(rate(a), rate(convert(a.compounding, b)); kwargs...)
 end
 
@@ -348,23 +332,12 @@ false
 # `isequal`/`hash` contract (equal values hash equally, including across
 # Periodic/Continuous). `isequal` forwards to `isequal` on the underlying numbers so
 # NaN/-0.0 semantics match Base's.
-#
-# Note: separate concrete Periodic/Continuous combinations, matching the
-# invalidation-avoidance convention of `isapprox` above and `<`/`>` below.
-Base.:(==)(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2} = a.continuous_value == b.continuous_value
-Base.:(==)(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2} = a.continuous_value == b.continuous_value
-Base.:(==)(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2} = a.continuous_value == b.continuous_value
-Base.:(==)(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2} = a.continuous_value == b.continuous_value
-
-Base.isequal(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2} = isequal(a.continuous_value, b.continuous_value)
-Base.isequal(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2} = isequal(a.continuous_value, b.continuous_value)
-Base.isequal(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2} = isequal(a.continuous_value, b.continuous_value)
-Base.isequal(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2} = isequal(a.continuous_value, b.continuous_value)
+Base.:(==)(a::Rate, b::Rate) = a.continuous_value == b.continuous_value
+Base.isequal(a::Rate, b::Rate) = isequal(a.continuous_value, b.continuous_value)
 
 # The compounding convention is deliberately excluded from the hash: equal-force rates
 # are `==`/`isequal` across conventions, so they must hash identically.
-Base.hash(r::Rate{<:Any, Periodic}, h::UInt) = hash(r.continuous_value, hash(:FinanceCoreRate, h))
-Base.hash(r::Rate{<:Any, Continuous}, h::UInt) = hash(r.continuous_value, hash(:FinanceCoreRate, h))
+Base.hash(r::Rate, h::UInt) = hash(r.continuous_value, hash(:FinanceCoreRate, h))
 
 
 """
@@ -553,8 +526,6 @@ function Base.:/(a::Rate{N, T}, b::Real) where {N, T <: Periodic}
     return Periodic(rate(a) / b, a.compounding.frequency)
 end
 
-# Keep concrete compounding combinations, as for isless, to avoid invalidating
-# previously compiled generic comparison code. Numeric types remain independent.
 """
     <(a::Rate, b::Rate)
 
@@ -562,27 +533,13 @@ Compare the stored forces of interest with numeric `<`, regardless of compoundin
 convention. NaN is unordered and signed zeros compare equal. The `>` comparison
 uses Base's `b < a` fallback. Use `isless` for a total sorting order.
 """
-function Base.:<(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2}
-    return a.continuous_value < b.continuous_value
-end
-function Base.:<(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2}
-    return a.continuous_value < b.continuous_value
-end
-function Base.:<(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2}
-    return a.continuous_value < b.continuous_value
-end
-function Base.:<(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2}
-    return a.continuous_value < b.continuous_value
-end
+Base.:<(a::Rate, b::Rate) = a.continuous_value < b.continuous_value
 
 # Every Rate stores its continuously compounded equivalent in `continuous_value`, and
 # a lower force of interest is exactly a lower `continuous_value`, so `isless` compares
 # that field directly — no compounding conversion needed, and the comparison is
 # frame-symmetric. Forwarding to `isless` on the underlying numbers inherits its total
 # order (e.g. NaN ordering).
-#
-# Separate methods for each concrete compounding combination avoid invalidating
-# previously compiled generic `isless` code.
 """
     isless(a::Rate, b::Rate)
 
@@ -605,15 +562,4 @@ julia> minimum([Periodic(0.05, 2), Continuous(0.03)])
 Continuous(0.03)
 ```
 """
-function Base.isless(a::Rate{N1, Periodic}, b::Rate{N2, Periodic}) where {N1, N2}
-    return isless(a.continuous_value, b.continuous_value)
-end
-function Base.isless(a::Rate{N1, Continuous}, b::Rate{N2, Continuous}) where {N1, N2}
-    return isless(a.continuous_value, b.continuous_value)
-end
-function Base.isless(a::Rate{N1, Periodic}, b::Rate{N2, Continuous}) where {N1, N2}
-    return isless(a.continuous_value, b.continuous_value)
-end
-function Base.isless(a::Rate{N1, Continuous}, b::Rate{N2, Periodic}) where {N1, N2}
-    return isless(a.continuous_value, b.continuous_value)
-end
+Base.isless(a::Rate, b::Rate) = isless(a.continuous_value, b.continuous_value)
