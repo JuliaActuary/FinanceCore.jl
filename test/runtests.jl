@@ -9,6 +9,7 @@ include("Rates.jl")
 include("irr.jl")
 include("present_value.jl")
 include("contracts.jl")
+include("daycounts.jl")
 
 using Aqua
 @testset "Aqua.jl" begin
