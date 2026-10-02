@@ -19,6 +19,54 @@
         @test present_value(r, [1, 2]) ≈ 1 / 1.02 + 2 / 1.02^2
     end
 
+    @testset "amounts are paid at their times, Cashflows at their own" begin
+        r = Continuous(0.03)
+        # an amount in a collection is paid at its key
+        @test pv(r, [10, 20]) == 10 * discount(r, 1) + 20 * discount(r, 2)
+        @test pv(r, [10, 20]) == pv(r, [10, 20], [1, 2])
+        @test pv(r, Dict(1.5 => 10.0)) == 10.0 * discount(r, 1.5)
+        # a Cashflow's own time wins over the paired time
+        cfs = [Cashflow(10.0, 0.5), Cashflow(20.0, 2.5)]
+        @test pv(r, cfs, [1, 2]) == pv(r, [10.0, 20.0], [0.5, 2.5])
+        @test pv(r, cfs, [1, 2]) == pv(r, cfs)
+        @test pv(0.05, cfs, [1, 2]) == pv(0.05, [10.0, 20.0], [0.5, 2.5])
+        # a number is paid at its key, and a Cashflow at its time
+        @test pv(r, Any[10, Cashflow(5, 3.5)]) == 10 * discount(r, 1) + 5 * discount(r, 3.5)
+        # a Cashflow carries its time, so there is no time to pass with it
+        @test_throws MethodError pv(r, Cashflow(1.0, 3.0), 1.0)
+        @test_throws MethodError pv(0.05, Cashflow(1.0, 3.0), 1.0)
+    end
+
+    @testset "collections of contracts are valued linearly" begin
+        a, b, c = Cashflow(10.0, 1.5), Cashflow(-4.0, 0.25), Cashflow(7, 3)
+        for r in (0.05, Periodic(0.04, 2), Continuous(0.03), Continuous(0.03f0))
+            # a collection of one contract is that contract
+            @test pv(r, [a]) === pv(r, a)
+            @test pv(r, (a,)) === pv(r, a)
+            @test pv(r, Any[a]) === pv(r, a)
+            # linearity, whatever the order
+            @test pv(r, [a, b]) ≈ pv(r, a) + pv(r, b)
+            @test pv(r, [a, b]) ≈ pv(r, [b, a])
+            @test pv(r, [a, b, c]) ≈ pv(r, [c, a, b])
+            # tuples, Dicts and nested collections
+            @test pv(r, (a, b, c)) ≈ pv(r, [a, b, c])
+            @test pv(r, Dict(:a => a, :b => b, :c => c)) ≈ pv(r, [a, b, c])
+            @test pv(r, Any[a, [b, c]]) ≈ pv(r, a) + pv(r, [b, c])
+            @test pv(r, Any[[a], (b, Any[c])]) ≈ pv(r, [a, b, c])
+            # a nested collection of amounts is paid at its own keys
+            @test pv(r, Any[a, [10, 20]]) ≈ pv(r, a) + pv(r, [10, 20])
+            # Composite
+            @test pv(r, Composite(a, b)) ≈ pv(r, a) + pv(r, b)
+            @test pv(r, Composite(Composite(a, b), c)) ≈ pv(r, Composite(a, Composite(b, c)))
+            @test pv(r, Composite(Composite(a, b), c)) ≈ pv(r, [a, b, c])
+            @test pv(r, [Composite(a, b), c]) ≈ pv(r, [a, b, c])
+        end
+        # derivatives are linear too
+        d(x) = ForwardDiff.derivative(r -> pv(Continuous(r), x), 0.03)
+        @test d([a, b]) ≈ d(a) + d(b)
+        @test d(Composite(a, b)) ≈ d(a) + d(b)
+    end
+
     @testset "empty cashflows" begin
         # The empty sum is exactly zero. For concrete amount, time and rate types it has the type
         # a present value of such cashflows has.
@@ -46,6 +94,17 @@
         end
         @test pv(0.05, Float64[], Any[]) === 0.0
         @test iszero(ForwardDiff.derivative(r -> pv(r, Any[]), 0.05))
+        # collections of contracts, empty or holding empty collections
+        for x in (FinanceCore.AbstractContract[], Cashflow[], Any[], Any[Any[], Cashflow[]])
+            @test pv(0.05, x) === 0.0
+            @test pv(Continuous(0.05), x) === 0.0
+            @test pv(0.05f0, x) === 0.0f0
+            @test pv(Periodic(0.05f0, 1), x) === 0.0f0
+            @test pv(big"0.05", x) isa BigFloat
+            @test iszero(pv(big"0.05", x))
+            @test pv(ForwardDiff.Dual(0.05, 1.0), x) isa ForwardDiff.Dual
+            @test iszero(ForwardDiff.derivative(r -> pv(Continuous(r), x), 0.05))
+        end
         # The zero does not depend on the rate's value: evaluating Continuous(Inf) at time zero
         # gives NaN, but the empty present value is a positive zero of the valuation's type.
         @test pv(Continuous(Inf), Float64[]) === 0.0

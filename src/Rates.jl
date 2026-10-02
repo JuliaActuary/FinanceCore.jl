@@ -208,19 +208,14 @@ julia> convert(Continuous(), r)
 Continuous(0.009995835646702353)
 ```
 """
-function Base.convert(cf::T, r::Rate{<:Any, <:Frequency}) where {T <: Frequency}
-    return convert(cf, r, r.compounding)
+function Base.convert(to::T, r::Rate{N}) where {N, T <: Frequency}
+    # Every convention stores the same force of interest. Only the quoting metadata
+    # changes; a nominal-rate round trip would lose precision or saturate at -frequency.
+    return Rate{N, T}(r.continuous_value, to)
 end
 
 function Base.convert(cf::T, r::R) where {R <: Real} where {T <: Frequency}
     return Rate(r, cf)
-end
-
-# Both conventions store the same force of interest. Only the quoting metadata
-# changes; a nominal-rate round trip would lose precision or saturate at -frequency.
-# Keep the three-argument dispatch so other Frequency types can define conversions.
-function Base.convert(to::T, r::Rate{N}, from::Union{Continuous, Periodic}) where {N, T <: Union{Continuous, Periodic}}
-    return Rate{N, T}(r.continuous_value, to)
 end
 
 function Continuous(r::Rate{<:Any, <:Periodic})
@@ -346,6 +341,9 @@ Base.hash(r::Rate, h::UInt) = hash(r.continuous_value, hash(:FinanceCoreRate, h)
 
 Discount `rate` for a time `t` or for an interval `(from, to)`. If `rate` is not a `Rate`, it will be assumed to be a `Periodic` rate compounded once per period, i.e. `Periodic(rate,1)`. 
 
+The interval form is defined here for a `Rate` or a number, a constant rate, which discounts over
+`to - from`. Other models (such as FinanceModels' yield curves) define their own interval method.
+
 # Examples
 
 ```julia-repl
@@ -364,13 +362,16 @@ julia> discount(0.03, 5, 10)
 """
 discount(rate, t) = discount(Rate(rate), t)
 discount(rate::Rate, t) = exp(-rate.continuous_value * t)
-discount(rate, from, to) = discount(rate, to - from)
+discount(rate::Union{Real, Rate}, from, to) = discount(rate, to - from)
 
 """
     accumulation(rate, t)
     accumulation(rate, from, to)
 
 Accumulate `rate` for a time `t` or for an interval `(from, to)`. If `rate` is not a `Rate`, it will be assumed to be a `Periodic` rate compounded once per period, i.e. `Periodic(rate,1)`. 
+
+The interval form is defined here for a `Rate` or a number, a constant rate, which accumulates over
+`to - from`. Other models (such as FinanceModels' yield curves) define their own interval method.
 
 # Examples
 
@@ -390,7 +391,7 @@ julia> accumulation(0.03, 5, 10)
 """
 accumulation(rate, t) = accumulation(Rate(rate), t)
 accumulation(rate::Rate, t) = exp(rate.continuous_value * t)
-accumulation(rate, from, to) = accumulation(rate, to - from)
+accumulation(rate::Union{Real, Rate}, from, to) = accumulation(rate, to - from)
 
 Base.zero(rate::T, t) where {T <: Rate} = rate
 forward(rate::T, to) where {T <: Rate} = rate
