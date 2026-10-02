@@ -21,8 +21,13 @@ amounts, contracts carry their own timing, and the valuation time is not an argu
   FinanceModels, it used to throw a `MethodError`).
 
 So collections of contracts and `Composite`s are linear: `pv(r, [c]) === pv(r, c)`, and
-`pv(r, [a, b]) ≈ pv(r, a) + pv(r, b) ≈ pv(r, [b, a])`. Present values of numeric vectors are
-bitwise unchanged.
+`pv(r, [a, b]) ≈ pv(r, a) + pv(r, b) ≈ pv(r, [b, a])`. Present values of numeric vectors without
+times are bitwise unchanged.
+
+`present_value(r, amounts, times)` no longer builds the vector of discounted amounts before
+summing it: two vectors are summed pairwise by index, and other collections in order. It
+allocates nothing, and with a range of times it no longer compiles, in some sessions, to code up to
+2.3× slower. Results can differ from 2.8 in the last bits.
 
 ### Cashflows add only at equal times
 
