@@ -1,3 +1,8 @@
+# A discount model that is not a constant rate: it discounts from time zero, but has no interval method.
+struct LinearDiscount end
+FinanceCore.discount(::LinearDiscount, t) = 1 - t / 100
+FinanceCore.accumulation(::LinearDiscount, t) = 1 / (1 - t / 100)
+
 @testset "Rates" begin
     @testset "rate types" begin
         rs = Rate.([0.1, 0.02], Continuous())
@@ -70,14 +75,18 @@
 
     @testset "conversion preserves the force of interest" begin
         originals = (
-            Continuous(-40.0), Continuous(1000.0), Continuous(-0.0), Continuous(NaN),
-            Periodic(-0.9, 1), Periodic(0.05, 2),
-            Continuous(0.03f0), Periodic(0.02f0, 12), Continuous(big"0.03"),
+            Continuous(-40.0), Continuous(1000.0), Continuous(-0.0), Continuous(NaN), Continuous(Inf),
+            Periodic(-0.9, 1), Periodic(0.05, 2), Periodic(0.07, 365), Rate(1, Periodic(1)),
+            Continuous(0.03f0), Periodic(0.02f0, 12), Continuous(big"0.03"), Periodic(big"0.03", 4),
+            Continuous(ForwardDiff.Dual(0.03, 1.0)), Periodic(ForwardDiff.Dual(0.03, 1.0), 2),
         )
-        for original in originals, convention in (Continuous(), Periodic(1), Periodic(12))
+        conventions = (Continuous(), Periodic(1), Periodic(2), Periodic(12), Periodic(365))
+        for original in originals, convention in conventions
             converted = @inferred convert(convention, original)
             @test compounding(converted) == convention
             @test typeof(converted.continuous_value) === typeof(original.continuous_value)
+            @test converted.continuous_value === original.continuous_value
+            @test convention(original) === converted
             @test isequal(converted, original)
             @test hash(converted) == hash(original)
             @test isequal(discount(converted, 0.001), discount(original, 0.001))
@@ -351,6 +360,19 @@
 
         @test discount(rate, from, to) ≈ discount(rate, to - from)
         @test accumulation(rate, from, to) ≈ accumulation(rate, to - from)
+
+        # a constant rate, given as a Rate or a number, discounts over `to - from`
+        for r in (0.15, 3, 0.15f0, big"0.15", Periodic(0.15, 2), Continuous(0.15), ForwardDiff.Dual(0.15, 1.0))
+            @test discount(r, from, to) == discount(r, to - from)
+            @test accumulation(r, from, to) == accumulation(r, to - from)
+            @test discount(r, 2.0, 1.0) == accumulation(r, 1.0, 2.0)
+        end
+        # any other model (a yield curve, say) defines its own interval, rather than falling back to
+        # `to - from`, which is wrong unless the rate is constant
+        @test discount(LinearDiscount(), 1.0) == 0.99
+        @test_throws MethodError discount(LinearDiscount(), 1.0, 2.0)
+        @test_throws MethodError accumulation(LinearDiscount(), 1.0, 2.0)
+        @test_throws MethodError discount(Continuous(), from, to)
 
     end
 
