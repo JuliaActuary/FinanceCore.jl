@@ -3,20 +3,22 @@
     present_value(yield_model, cashflows)
     present_value(yield_model, contract)
 
-Discount cashflows at the given `yield_model` (a `Rate`, a number, which is taken as `Periodic(rate, 1)`,
-or another model that defines `discount`). The valuation is as of time zero.
+Discount cashflows at `yield_model`: a `Rate`, a number (taken as `Periodic(rate, 1)`), or any model
+that defines `discount`. The valuation is as of time zero.
 
-- With `timepoints`, each amount is paid at the paired timepoint. A [`Cashflow`](@ref) carries its own
-  time, which it is paid at instead of the paired one. Amounts and timepoints must have the same
-  length: two vectors of different lengths throw a `DimensionMismatch`.
+- With `timepoints`, each amount is paid at the paired timepoint. A [`Cashflow`](@ref) is paid at its
+  own time, not the paired one. Amounts and timepoints must have the same length: two vectors of
+  different lengths throw a `DimensionMismatch`.
 - Without `timepoints`, the collection is valued over its `pairs`: a number is paid at its key (the
   index of a vector, the key of a `Dict`), and any other element, such as a `Cashflow`, a contract or a
   nested collection, is valued on its own timing, `present_value(yield_model, element)`.
 - A [`Cashflow`](@ref) is its amount discounted from its time, and a [`Composite`](@ref) is the sum of
   its two components' present values.
 
-So a collection of contracts, or a `Composite`, is valued linearly: its present value is the sum of
-its contracts' present values, in any order.
+So present value is linear over self-timed contracts whose values share a reporting currency:
+`pv(r, [a, b]) ≈ pv(r, a) + pv(r, b) ≈ pv(r, [b, a])`, and
+`pv(r, Composite(a, b)) == pv(r, a) + pv(r, b)`. A numeric vector is an indexed schedule: reordering
+it moves amounts to other times.
 
 If your timepoints are dates, you can convert them into a floating point representation of the time interval using DayCounts.jl.
 

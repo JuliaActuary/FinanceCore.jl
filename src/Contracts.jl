@@ -43,7 +43,7 @@ A `Cashflow{A,B}` is a contract that pays an `amount` at `time`.
 Cashflows can be:
 
 - negated with the unary `-` operator. 
-- added/subtracted together but note that the `time` must be exactly equal (`==`). To combine cashflows at different times, see [`FinanceCore.aggregate`](@ref).
+- added or subtracted when their times are exactly equal (`==`). To combine cashflows at different times, use [`FinanceCore.aggregate`](@ref).
 - multiplied/divided by a scalar.
 
 Supertype Hierarchy
@@ -137,14 +137,12 @@ end
 """
     FinanceCore.aggregate(cashflows; key = identity)
 
-Combine `cashflows` by time: group them by `key(time)`, comparing the keys exactly (`==`), and return
-one `Cashflow` per key, in ascending order of the keys, whose amount is the sum of its group's amounts
-and whose time is the key.
+Group `cashflows` by `key(time)`, comparing keys with `==`. Return one `Cashflow` per key, in
+ascending key order. Its amount is the group's total and its time is the key.
 
-Aggregation preserves the nominal total of the amounts for any `key`. It preserves present value only
-when `key` leaves settlement times unchanged, as the default `identity` does (merging cashflows at
-exactly equal times); a `key` that rounds times generally moves cashflows to other times, and so
-changes their present value.
+For any `key`, the total amount is preserved (≈, as the sum is reordered). Present value is preserved
+(≈) when `key` leaves times unchanged, as the default `identity` does. A `key` that moves times, such
+as `round`, generally changes present value.
 
 # Examples
 

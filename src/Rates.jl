@@ -341,8 +341,8 @@ Base.hash(r::Rate, h::UInt) = hash(r.continuous_value, hash(:FinanceCoreRate, h)
 
 Discount `rate` for a time `t` or for an interval `(from, to)`. If `rate` is not a `Rate`, it will be assumed to be a `Periodic` rate compounded once per period, i.e. `Periodic(rate,1)`. 
 
-The interval form is defined here for a `Rate` or a number, a constant rate, which discounts over
-`to - from`. Other models (such as FinanceModels' yield curves) define their own interval method.
+FinanceCore defines the interval form only for a constant rate (a `Rate` or a number); it discounts
+over `to - from`. Other models, such as FinanceModels' yield curves, define their own interval method.
 
 # Examples
 
@@ -370,8 +370,8 @@ discount(rate::Union{Real, Rate}, from, to) = discount(rate, to - from)
 
 Accumulate `rate` for a time `t` or for an interval `(from, to)`. If `rate` is not a `Rate`, it will be assumed to be a `Periodic` rate compounded once per period, i.e. `Periodic(rate,1)`. 
 
-The interval form is defined here for a `Rate` or a number, a constant rate, which accumulates over
-`to - from`. Other models (such as FinanceModels' yield curves) define their own interval method.
+FinanceCore defines the interval form only for a constant rate (a `Rate` or a number); it accumulates
+over `to - from`. Other models, such as FinanceModels' yield curves, define their own interval method.
 
 # Examples
 
