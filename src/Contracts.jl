@@ -164,7 +164,7 @@ function aggregate(cashflows; key = identity)
     merged = empty(keyed)
     for cf in keyed
         if !isempty(merged) && timepoint(merged[end]) == timepoint(cf)
-            merged[end] = Cashflow(amount(merged[end]) + amount(cf), timepoint(merged[end]))
+            merged[end] += cf
         else
             push!(merged, cf)
         end

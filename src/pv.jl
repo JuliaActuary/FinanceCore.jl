@@ -101,9 +101,7 @@ function present_value(r::Real, x::AbstractVector)
     return present_value(Rate(r), x)
 end
 
-function present_value(r, x::C) where {C <: Cashflow}
-    return x.amount * discount(r, x.time)
-end
+present_value(r, x::Cashflow) = present_value(r, x.amount, x.time)
 
 function present_value(r, x::C) where {C <: Composite}
     return present_value(r, x.a) + present_value(r, x.b)
