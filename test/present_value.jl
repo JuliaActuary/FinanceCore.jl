@@ -19,6 +19,34 @@
         @test present_value(r, [1, 2]) ≈ 1 / 1.02 + 2 / 1.02^2
     end
 
+    @testset "vectors of amounts and times pair by index" begin
+        # different lengths throw; 2.x dropped the extra entries
+        r = Continuous(0.03)
+        @test_throws DimensionMismatch pv(r, [1.0, 2.0, 3.0], [1.0, 2.0])
+        @test_throws DimensionMismatch pv(r, [1.0, 2.0], [1.0, 2.0, 3.0])
+        @test_throws DimensionMismatch pv(0.05, [1.0, 2.0], 1:3)
+        @test_throws DimensionMismatch pv(r, [Cashflow(1.0, 1.0), Cashflow(2.0, 2.0)], [1.0])
+
+        # Valid vectors give the bits of the index-range reduction this replaced (feb655e).
+        index_range_sum(r, x, t) = mapreduce(
+            k -> FinanceCore._present_value_at(r, x[firstindex(x) + k], t[firstindex(t) + k]), +,
+            0:(min(length(x), length(t)) - 1)
+        )
+        same(a, b) = typeof(a) === typeof(b) && isequal(a, b)
+        amounts(T, n) = [T(100 * sin(k)) for k in 1:n]
+        for (r, x, t) in (
+                (Continuous(0.03), amounts(Float64, 40), [k / 3 for k in 1:40]),
+                (Periodic(0.04, 2), amounts(Float64, 2000), 1:2000),
+                (Continuous(0.03f0), amounts(Float32, 40), Float32[k / 3 for k in 1:40]),
+                (Periodic(big"0.05", 1), amounts(BigFloat, 20), 0.5:0.5:10),
+                (Continuous(0.03), [Cashflow(100 * sin(k), k / 3) for k in 1:40], 1:40),
+            )
+            @test same(pv(r, x, t), index_range_sum(r, x, t))
+        end
+        x = amounts(Float64, 40)
+        @test same(pv(0.05, x, 1:40), index_range_sum(Rate(0.05), x, 1:40))
+    end
+
     @testset "amounts are paid at their times, Cashflows at their own" begin
         r = Continuous(0.03)
         # an amount in a collection is paid at its key

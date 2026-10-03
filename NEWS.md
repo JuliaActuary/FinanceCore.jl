@@ -29,6 +29,9 @@ summing it: two vectors are summed pairwise by index, and other collections in o
 allocates nothing, and with a range of times it no longer compiles, in some sessions, to code up to
 2.3× slower. Results can differ from 2.8 in the last bits.
 
+Vectors of amounts and times of different lengths now throw a `DimensionMismatch`; 2.x dropped
+the extra entries.
+
 ### Cashflows add only at equal times
 
 `Cashflow + Cashflow` and `-` accepted times within `isapprox` tolerance, so addition was not

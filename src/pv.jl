@@ -7,7 +7,8 @@ Discount cashflows at the given `yield_model` (a `Rate`, a number, which is take
 or another model that defines `discount`). The valuation is as of time zero.
 
 - With `timepoints`, each amount is paid at the paired timepoint. A [`Cashflow`](@ref) carries its own
-  time, which it is paid at instead of the paired one.
+  time, which it is paid at instead of the paired one. Amounts and timepoints must have the same
+  length: two vectors of different lengths throw a `DimensionMismatch`.
 - Without `timepoints`, the collection is valued over its `pairs`: a number is paid at its key (the
   index of a vector, the key of a `Dict`), and any other element, such as a `Cashflow`, a contract or a
   nested collection, is valued on its own timing, `present_value(yield_model, element)`.
@@ -53,15 +54,13 @@ function present_value(r, x, times)
     return _sum_present_values(r, x, times)
 end
 
-# Pairs amounts with times up to the shorter of the two, without materializing the discounted
-# amounts: `mapreduce(f, +, x, times)` builds `map(f, x, times)` first, which allocates, and with a
-# range of times it compiled to code up to 2.3× slower depending on the session. Vectors reduce
-# pairwise over an index range (offset arrays index from their own first index); other collections
-# in order. (LoopVectorization.vmapreduce was tried once, but didn't play well with dual numbers.)
-function _sum_present_values(r, x::AbstractVector, times::AbstractVector)
-    i, j = firstindex(x), firstindex(times)
-    return mapreduce(k -> _present_value_at(r, x[i + k], times[j + k]), +, 0:(min(length(x), length(times)) - 1))
-end
+# Vectors pair by index, so unequal lengths throw a DimensionMismatch, and reduce over the index
+# range with Base's pairwise summation, which stays accurate for long streams. Other collections,
+# such as tuples and generators, are zipped, which stops at the shorter one. Neither builds a vector
+# of discounted amounts, as `mapreduce(f, +, x, times)` would. (LoopVectorization.vmapreduce was
+# tried once, but didn't play well with dual numbers.)
+_sum_present_values(r, x::AbstractVector, times::AbstractVector) =
+    mapreduce(k -> _present_value_at(r, x[k], times[k]), +, eachindex(x, times))
 _sum_present_values(r, x, times) = mapreduce(((xi, ti),) -> _present_value_at(r, xi, ti), +, zip(x, times))
 
 # Convert scalar rates once per collection rather than once per cashflow in the
