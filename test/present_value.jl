@@ -26,6 +26,9 @@
         @test_throws DimensionMismatch pv(r, [1.0, 2.0], [1.0, 2.0, 3.0])
         @test_throws DimensionMismatch pv(0.05, [1.0, 2.0], 1:3)
         @test_throws DimensionMismatch pv(r, [Cashflow(1.0, 1.0), Cashflow(2.0, 2.0)], [1.0])
+        @test_throws DimensionMismatch pv(r, [1.0], Float64[])
+        # no amounts are worth zero, whatever the times
+        @test pv(r, Float64[], [1.0, 2.0]) === 0.0
 
         # Valid vectors give the bits of the index-range reduction this replaced (feb655e).
         index_range_sum(r, x, t) = mapreduce(

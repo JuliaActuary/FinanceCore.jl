@@ -8,7 +8,7 @@ that defines `discount`. The valuation is as of time zero.
 
 - With `timepoints`, each amount is paid at the paired timepoint. A [`Cashflow`](@ref) is paid at its
   own time, not the paired one. Amounts and timepoints must have the same length: two vectors of
-  different lengths throw a `DimensionMismatch`.
+  different lengths throw a `DimensionMismatch`, unless there are no amounts.
 - Without `timepoints`, the collection is valued over its `pairs`: a number is paid at its key (the
   index of a vector, the key of a `Dict`), and any other element, such as a `Cashflow`, a contract or a
   nested collection, is valued on its own timing, `present_value(yield_model, element)`.

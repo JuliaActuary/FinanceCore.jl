@@ -26,7 +26,8 @@ numeric vectors without times are bitwise unchanged.
 
 `present_value(r, amounts, times)` no longer builds a vector of discounted amounts before summing,
 so it does not allocate. Results can differ from 2.8 in the last bits. Vectors of amounts and times
-of different lengths now throw a `DimensionMismatch`; 2.x dropped the extra entries.
+of different lengths now throw a `DimensionMismatch`, unless there are no amounts; 2.x dropped the
+extra entries.
 
 ### Cashflows add only at equal times
 
