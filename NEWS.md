@@ -47,12 +47,16 @@ preserves the total amount (≈) for any `key`, and present value (≈) when `ke
 unchanged, as `identity` does. A `key` that moves times, such as rounding, generally changes
 present value.
 
-### Interval discounts are defined for constant rates only
+### Discount fallbacks are defined for constant rates only
 
 `discount(rate, from, to)` and `accumulation(rate, from, to)` are defined for a `Rate` or a number.
 The untyped fallback computed `discount(model, to - from)` for any model without its own interval
 method, which is wrong unless the rate is constant, and is removed: such a call now throws a
 `MethodError`.
+
+`discount(rate, t)` and `accumulation(rate, t)` take a number as `Periodic(rate, 1)`, and no longer
+pass any other argument to `Rate`. A model without its own method now gets a `MethodError` from
+`discount` or `accumulation`, rather than from inside `Rate`.
 
 ### `irr` requires one timepoint per cashflow
 

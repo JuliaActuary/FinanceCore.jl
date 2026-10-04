@@ -436,6 +436,20 @@ FinanceCore.accumulation(::LinearDiscount, t) = 1 / (1 - t / 100)
         @test_throws MethodError accumulation(LinearDiscount(), 1.0, 2.0)
         @test_throws MethodError discount(Continuous(), from, to)
 
+        # Only a number is taken as a rate, so anything else without its own method throws from
+        # `discount` or `accumulation` itself. Before 3.0, it went to `Rate` and threw inside it.
+        for f in (discount, accumulation), x in (Continuous(), "0.15", :rate)
+            err = try
+                f(x, 1.0)
+            catch e
+                e
+            end
+            @test err isa MethodError && err.f === f
+        end
+        for r in (0.15, 3, 0.15f0, big"0.15", 3 // 20, ForwardDiff.Dual(0.15, 1.0))
+            @test discount(r, 2.0) == discount(Rate(r), 2.0)
+            @test accumulation(r, 2.0) == accumulation(Rate(r), 2.0)
+        end
     end
 
     @testset "Compounding Interface" begin

@@ -366,7 +366,8 @@ Base.hash(r::Rate, h::UInt) = hash(r.continuous_value, hash(:FinanceCoreRate, h)
     discount(rate, t)
     discount(rate, from, to)
 
-Discount `rate` for a time `t` or for an interval `(from, to)`. If `rate` is not a `Rate`, it will be assumed to be a `Periodic` rate compounded once per period, i.e. `Periodic(rate,1)`. 
+Discount `rate` for a time `t` or for an interval `(from, to)`. A number `rate` is taken as a rate
+compounded once per period, `Periodic(rate, 1)`.
 
 FinanceCore defines the interval form only for a constant rate (a `Rate` or a number); it discounts
 over `to - from`. Other models, such as FinanceModels' yield curves, define their own interval method.
@@ -387,7 +388,7 @@ julia> discount(0.03, 5, 10)
 0.862608784384164
 ```
 """
-discount(rate, t) = discount(Rate(rate), t)
+discount(rate::Real, t) = discount(Rate(rate), t)
 discount(rate::Rate, t) = exp(-rate.continuous_value * t)
 discount(rate::Union{Real, Rate}, from, to) = discount(rate, to - from)
 
@@ -395,7 +396,8 @@ discount(rate::Union{Real, Rate}, from, to) = discount(rate, to - from)
     accumulation(rate, t)
     accumulation(rate, from, to)
 
-Accumulate `rate` for a time `t` or for an interval `(from, to)`. If `rate` is not a `Rate`, it will be assumed to be a `Periodic` rate compounded once per period, i.e. `Periodic(rate,1)`. 
+Accumulate `rate` for a time `t` or for an interval `(from, to)`. A number `rate` is taken as a rate
+compounded once per period, `Periodic(rate, 1)`.
 
 FinanceCore defines the interval form only for a constant rate (a `Rate` or a number); it accumulates
 over `to - from`. Other models, such as FinanceModels' yield curves, define their own interval method.
@@ -416,7 +418,7 @@ julia> accumulation(0.03, 5, 10)
 1.1592740743
 ```
 """
-accumulation(rate, t) = accumulation(Rate(rate), t)
+accumulation(rate::Real, t) = accumulation(Rate(rate), t)
 accumulation(rate::Rate, t) = exp(rate.continuous_value * t)
 accumulation(rate::Union{Real, Rate}, from, to) = accumulation(rate, to - from)
 
