@@ -2,6 +2,7 @@ using FinanceCore
 using Test
 using Dates
 using ForwardDiff
+using OffsetArrays
 import DayCounts
 
 

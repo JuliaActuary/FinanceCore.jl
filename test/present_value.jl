@@ -19,7 +19,7 @@
         @test present_value(r, [1, 2]) ≈ 1 / 1.02 + 2 / 1.02^2
     end
 
-    @testset "vectors of amounts and times pair by index" begin
+    @testset "vectors of amounts and times pair by position" begin
         # different lengths throw; 2.x dropped the extra entries
         r = Continuous(0.03)
         @test_throws DimensionMismatch pv(r, [1.0, 2.0, 3.0], [1.0, 2.0])
@@ -29,6 +29,14 @@
         @test_throws DimensionMismatch pv(r, [1.0], Float64[])
         # no amounts are worth zero, whatever the times
         @test pv(r, Float64[], [1.0, 2.0]) === 0.0
+        # offset vectors pair by position from their own first index
+        flat = Continuous(0.03)
+        expected = pv(flat, [100.0, 100.0], [1.0, 2.0])
+        @test expected ≈ 191.2210067 rtol = 1.0e-9
+        @test pv(flat, OffsetArray([100.0, 100.0], 40:41), [1.0, 2.0]) === expected
+        @test pv(flat, [100.0, 100.0], OffsetArray([1.0, 2.0], 0:1)) === expected
+        @test pv(flat, OffsetArray([100.0, 100.0], 40:41), OffsetArray([1.0, 2.0], -3:-2)) === expected
+        @test_throws DimensionMismatch pv(flat, OffsetArray([100.0, 100.0, 100.0], 40:42), [1.0, 2.0])
 
         # Valid vectors give the bits of the index-range reduction this replaced (feb655e).
         index_range_sum(r, x, t) = mapreduce(
