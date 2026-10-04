@@ -3,7 +3,8 @@
     internal_rate_of_return(cashflows::AbstractVector, timepoints)::Rate
     internal_rate_of_return(cashflows::AbstractVector{<:Cashflow})::Rate
 
-Calculate the internal rate of return with given timepoints. If no timepoints given, assumes equally spaced cashflows starting at time zero (0, 1, 2, ..., n).
+Calculate the internal rate of return with given timepoints. If no timepoints given, assumes equally spaced cashflows starting at time zero (`0, 1, ..., n - 1` for `n` cashflows).
+`cashflows` and `timepoints` must have the same length, or a `DimensionMismatch` is thrown.
 
 Returns a `Periodic(rate, 1)` `Rate`, or `nothing` if no root is found. Get the scalar rate by calling `rate()` on the result.
 
@@ -31,7 +32,8 @@ end
 internal_rate_of_return(cashflows::AbstractVector{<:Cashflow}) = _irr(cashflows, nothing)
 
 function internal_rate_of_return(cashflows, times)
-    @assert length(cashflows) <= length(times)
+    n = length(cashflows)
+    n == length(times) || throw(DimensionMismatch("$n cashflows but $(length(times)) timepoints"))
     return _irr(cashflows, times)
 end
 
@@ -240,8 +242,9 @@ function __pv_div_pv′(::SimdBackend, r, cashflows, times, t0)
 end
 
 """
-    irr(cashflows::vector)
-    irr(cashflows::Vector, timepoints::Vector)
+    irr(cashflows::AbstractVector)
+    irr(cashflows::AbstractVector, timepoints)
+    irr(cashflows::AbstractVector{<:Cashflow})
 
 An alias for [`internal_rate_of_return`](@ref).
 """

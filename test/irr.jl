@@ -283,9 +283,12 @@ end
     # Multiple roots: the fallback chooses the one nearest zero in force space (0.1 over 0.2).
     @test FinanceCore._irr_robust(zip([-100.0, 230.0, -132.0], [1000.0, 1001.0, 1002.0])) ≈ log(1.1)
 
-    # Extra timepoints have always been ignored; they must not shift the fallback's origin.
-    @test irr([-100.0, 110.0], [1000.0, 1001.0, -1.0e6]) ≈ Periodic(0.1, 1)
-    @test_throws AssertionError irr([-100.0, 110.0], [0.0])
+    # Cashflows and timepoints have the same length. Before 3.0, extra timepoints were ignored, and
+    # too few failed an assertion.
+    @test_throws DimensionMismatch irr([-100.0, 110.0], [1000.0, 1001.0, -1.0e6])
+    @test_throws DimensionMismatch irr([-100.0, 110.0], 0:2)
+    @test_throws DimensionMismatch irr([-100.0, 110.0], [0.0])
+    @test_throws DimensionMismatch irr(Float64[], [0.0])
 
     # AD must agree through both public input representations.
     amounts = [-100.0, 110.0]

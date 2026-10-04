@@ -54,6 +54,11 @@ The untyped fallback computed `discount(model, to - from)` for any model without
 method, which is wrong unless the rate is constant, and is removed: such a call now throws a
 `MethodError`.
 
+### `irr` requires one timepoint per cashflow
+
+`internal_rate_of_return(cashflows, timepoints)` (and `irr`) throws a `DimensionMismatch` unless
+both have the same length. 2.x ignored extra timepoints, and failed an `@assert` on too few.
+
 ### Rate conversion
 
 The three-argument `convert(to, r, from)` hook (which ignored `from`) is replaced by the single
@@ -80,5 +85,6 @@ string; it now throws a `MethodError`.
 | `Cashflow(1.0, 1.0) + Cashflow(1.0, 1.0 + 1e-10)` | Throws an `ArgumentError`. Make the times equal, or combine with `FinanceCore.aggregate(cfs; key = ...)`, knowing that a key that moves times generally changes present value |
 | `discount(model, from, to)` or `accumulation(model, from, to)` for a model without its own interval method | Throws a `MethodError`. Define `FinanceCore.discount(m::MyModel, from, to)` (for example `discount(m, to) / discount(m, from)`) and `accumulation` likewise |
 | `convert(to, r, from)` | `convert(to, r)` |
+| `irr(cashflows, timepoints)` with extra timepoints (they were ignored) | Throws a `DimensionMismatch`. Pass one timepoint per cashflow |
 | `Rate(r, Continuous())` with a `Rate` `r` (nested `r` in a new rate) | Converts `r`, like `convert(Continuous(), r)` |
 | `Rate(x, f)` with a value `x` that is not a `Real` | Throws a `MethodError` |
