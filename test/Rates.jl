@@ -68,6 +68,24 @@ FinanceCore.accumulation(::LinearDiscount, t) = 1 / (1 - t / 100)
         @test isempty(Test.detect_ambiguities(FinanceCore))
     end
 
+    @testset "printing keeps the number type" begin
+        @test repr(Continuous(0.03)) == "Continuous(0.03)"
+        @test repr(Periodic(0.05, 2)) == "Periodic(0.05, 2)"
+        # Before 3.0, these printed as Float64 rates.
+        @test repr(Continuous(0.03f0)) == "Continuous(0.03f0)"
+        @test repr(Periodic(0.05f0, 2)) == "Periodic(0.05f0, 2)"
+        @test repr(Continuous(Float16(0.03))) == "Continuous(Float16(0.03))"
+        # The output is a constructor expression for a rate of the same type.
+        for r in (
+                Continuous(0.03), Periodic(0.05, 2), Continuous(0.03f0), Periodic(0.05f0, 12),
+                Continuous(Float16(0.03)), Periodic(Float16(0.05), 2), Continuous(1), Continuous(1 // 2),
+            )
+            printed = Core.eval(@__MODULE__, Meta.parse(repr(r)))
+            @test typeof(printed) === typeof(r)
+            @test printed ≈ r
+        end
+    end
+
     @testset "integer rate values" begin
         # Rate(1, Periodic(1)) — a 100% annual effective rate — previously threw
         # InexactError from converting the (irrational) continuous equivalent back

@@ -73,6 +73,11 @@ A `Rate` now holds a real number: the type is `Rate{N <: Real, T <: Frequency}`,
 constructors take a `Real` value. In 2.x, `Rate("0.05", Continuous())` built a rate holding a
 string; it now throws a `MethodError`.
 
+### Printing
+
+A `Rate` prints its nominal rate with `show`, so the number type survives: `Periodic(0.05f0, 2)`
+prints as `Periodic(0.05f0, 2)`, where 2.x printed `Periodic(0.05, 2)`.
+
 ### Migration
 
 | Before (2.x) | Now (3.0) |

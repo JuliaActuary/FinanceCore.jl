@@ -127,13 +127,18 @@ end
 Base.Broadcast.broadcastable(ic::T) where {T <: Rate} = Ref(ic)
 
 # Pretty printing: show the user-facing rate value, not the internal continuous_value.
-# Output is a valid constructor expression, e.g. Periodic(0.06, 2) or Continuous(0.03).
+# Output is a valid constructor expression, e.g. Periodic(0.06, 2) or Continuous(0.03). The value is
+# printed with `show`, so its type survives where the number's `show` keeps it: Continuous(0.03f0).
 function Base.show(io::IO, r::Rate{<:Any, Periodic})
-    return print(io, "Periodic(", rate(r), ", ", r.compounding.frequency, ")")
+    print(io, "Periodic(")
+    show(io, rate(r))
+    return print(io, ", ", r.compounding.frequency, ")")
 end
 
 function Base.show(io::IO, r::Rate{<:Any, Continuous})
-    return print(io, "Continuous(", rate(r), ")")
+    print(io, "Continuous(")
+    show(io, rate(r))
+    return print(io, ")")
 end
 
 """
