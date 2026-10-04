@@ -25,10 +25,14 @@ vector is an indexed schedule: reordering it moves amounts to other times. Prese
 numeric vectors without times are bitwise unchanged.
 
 `present_value(r, amounts, times)` no longer builds a vector of discounted amounts before summing,
-so it does not allocate. Results can differ from 2.8 in the last bits. Vectors of amounts and times
-pair by position, from each one's first index (so offset vectors pair too), and vectors of different
-lengths now throw a `DimensionMismatch`, except that no amounts are worth zero whatever the times;
-2.x dropped the extra entries.
+so it does not allocate. Results can differ from 2.8 in the last bits.
+
+Amounts and times pair by position, and different lengths now throw a `DimensionMismatch`,
+whatever the collections: vectors (paired from each one's first index, so offset vectors pair too),
+tuples, generators, or a single time, which pays a collection of one amount. No amounts are worth
+zero whatever the times. 2.x zipped the two, dropping the extra entries: a single time paid only the
+first amount. Each collection is also iterated once, so a single-pass iterator of amounts keeps its
+first amount, which 2.8 lost to its emptiness check.
 
 ### Cashflows add only at equal times
 
@@ -61,6 +65,8 @@ method `convert(to::Frequency, r::Rate)`. Converted rates are identical to befor
 |---|---|
 | `pv(r, [a, b])` of contracts, with the index passed to each as a third argument | Unchanged call: each contract is valued on its own timing, `pv(r, [a, b]) ≈ pv(r, a) + pv(r, b)`. Results change only where they depended on a contract's position |
 | `pv(r, cf, t)` with a `Cashflow` (`t` was ignored) | `pv(r, cf)`. To pay the amount at another time: `pv(r, amount(cf), t)` |
+| `pv(r, amounts, times)` with more amounts than times, or the reverse (the extra entries were dropped), in any collection | Throws a `DimensionMismatch`. Pass one time per amount |
+| `pv(r, amounts, t)` with several amounts and a single time `t` (only the first amount was paid) | Throws a `DimensionMismatch`. To pay them all at `t`: `pv(r, sum(amounts), t)` |
 | Valuation as of time `t` (a third argument) | An explicit reduction. For a deterministic rate or curve, apply the interval discount to each cashflow at or after `t`: `sum(cf.amount * discount(r, t, cf.time) for cf in cfs if cf.time >= t; init = 0.0)`, with an `init` of the valuation's type. Do not use `accumulation(r, t) * pv(r, later_cfs)`: with `Continuous(1.0)`, a cashflow at 1000 and `t = 999`, it gives `Inf * 0.0 = NaN` |
 | `Cashflow(1.0, 1.0) + Cashflow(1.0, 1.0 + 1e-10)` | Throws an `ArgumentError`. Make the times equal, or combine with `FinanceCore.aggregate(cfs; key = ...)`, knowing that a key that moves times generally changes present value |
 | `discount(model, from, to)` or `accumulation(model, from, to)` for a model without its own interval method | Throws a `MethodError`. Define `FinanceCore.discount(m::MyModel, from, to)` (for example `discount(m, to) / discount(m, from)`) and `accumulation` likewise |

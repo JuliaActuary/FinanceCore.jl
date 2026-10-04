@@ -7,9 +7,11 @@ Discount cashflows at `yield_model`: a `Rate`, a number (taken as `Periodic(rate
 that defines `discount`. The valuation is as of time zero.
 
 - With `timepoints`, each amount is paid at the paired timepoint. A [`Cashflow`](@ref) is paid at its
-  own time, not the paired one. Vectors pair by position (from each one's first index) and must
-  have the same length: two vectors of different lengths throw a `DimensionMismatch`, except that
-  no amounts are worth zero whatever the times.
+  own time, not the paired one. Amounts and timepoints pair by position (vectors from each one's
+  first index) and must have the same length, whatever the collection: vectors, tuples,
+  generators, or a single timepoint with a collection of one amount. Different lengths throw a
+  `DimensionMismatch`, except that no amounts are worth zero whatever the times. Each collection
+  is iterated once, so single-pass iterators work.
 - Without `timepoints`, the collection is valued over its `pairs`: a number is paid at its key (the
   index of a vector, the key of a `Dict`), and any other element, such as a `Cashflow`, a contract or a
   nested collection, is valued on its own timing, `present_value(yield_model, element)`.
@@ -52,24 +54,43 @@ julia> present_value(Continuous(0.1), Any[10, Cashflow(20, 2)])
 ```
 
 """
-function present_value(r, x, times)
-    isempty(x) && return _empty_present_value(r, eltype(values(x)), eltype(times))
-    return _sum_present_values(r, x, times)
-end
+present_value(r, x, times) = _sum_present_values(r, x, times)
 
-# Vectors pair by position from each one's own first index, so offset vectors pair too, and must have
-# equal lengths (a shorter one would drop payments). They reduce over the positions with Base's
-# pairwise summation, which stays accurate for long streams. Other collections, such as tuples and
-# generators, are zipped, which stops at the shorter one. Neither builds a vector of discounted
-# amounts, as `mapreduce(f, +, x, times)` would. (LoopVectorization.vmapreduce was tried once, but
-# didn't play well with dual numbers.)
+# Amounts and times pair by position and must have equal lengths (a shorter one would drop
+# payments), except that no amounts are worth zero whatever the times. Neither method builds a
+# vector of discounted amounts, as `mapreduce(f, +, x, times)` would. (LoopVectorization.vmapreduce
+# was tried once, but didn't play well with dual numbers.)
+#
+# Vectors pair from each one's own first index, so offset vectors pair too. They reduce over the
+# positions with Base's pairwise summation, which stays accurate for long streams.
 function _sum_present_values(r, x::AbstractVector, times::AbstractVector)
+    isempty(x) && return _empty_present_value(r, eltype(x), eltype(times))
     n = length(x)
     n == length(times) || throw(DimensionMismatch("$n amounts but $(length(times)) times"))
     i, j = firstindex(x), firstindex(times)
     return mapreduce(k -> _present_value_at(r, x[i + k], times[j + k]), +, 0:(n - 1))
 end
-_sum_present_values(r, x, times) = mapreduce(((xi, ti),) -> _present_value_at(r, xi, ti), +, zip(x, times))
+
+# Any other collection (a tuple, a generator, a scalar time) is iterated together with its pair, in
+# a left fold, and once only, so a single-pass iterator loses no item to a separate emptiness or
+# length check. If one ends before the other, it throws.
+function _sum_present_values(r, x, times)
+    xs = iterate(x)
+    xs === nothing && return _empty_present_value(r, eltype(values(x)), eltype(times))
+    ts = iterate(times)
+    ts === nothing && _throw_length_mismatch()
+    total = _present_value_at(r, xs[1], ts[1])
+    while true
+        xs = iterate(x, xs[2])
+        ts = iterate(times, ts[2])
+        xs === nothing && break
+        ts === nothing && _throw_length_mismatch()
+        total += _present_value_at(r, xs[1], ts[1])
+    end
+    ts === nothing || _throw_length_mismatch()
+    return total
+end
+_throw_length_mismatch() = throw(DimensionMismatch("amounts and times have different lengths"))
 
 # Convert scalar rates once per collection rather than once per cashflow in the
 # scalar `present_value` method below.

@@ -1,3 +1,15 @@
+# A single-pass iterator: `iterate` ignores its state argument and advances shared state, so a check
+# that iterates it before the sum loses its first item.
+mutable struct OnePass{T}
+    items::Vector{T}
+    next::Int
+end
+OnePass(v) = OnePass(collect(v), 1)
+Base.iterate(p::OnePass, _ = nothing) =
+    p.next > length(p.items) ? nothing : (p.items[(p.next += 1) - 1], nothing)
+Base.IteratorSize(::Type{<:OnePass}) = Base.SizeUnknown()
+Base.eltype(::Type{OnePass{T}}) where {T} = T
+
 @testset "pv" begin
     cf = [100, 100]
 
@@ -56,6 +68,62 @@
         end
         x = amounts(Float64, 40)
         @test same(pv(0.05, x, 1:40), index_range_sum(Rate(0.05), x, 1:40))
+    end
+
+    @testset "every collection pairs amounts and times by position" begin
+        r = Continuous(0.03)
+        x, t = [10.0, -4.0, 7.5], [0.5, 1.25, 3.0]
+        expected = pv(r, x, t)
+        # Short streams sum left to right on every path, so the results are identical.
+        @test pv(r, Tuple(x), Tuple(t)) === expected
+        @test pv(r, x, Tuple(t)) === expected
+        @test pv(r, Tuple(x), t) === expected
+        @test pv(r, (a for a in x), (s for s in t)) === expected
+        @test pv(r, (10, Cashflow(-4.0, 1.25), 7.5), t) === expected
+        @test pv(0.05, Tuple(x), Tuple(t)) === pv(0.05, x, t)
+        long = [100 * sin(k) for k in 1:40]
+        @test pv(r, (a for a in long), (k / 3 for k in 1:40)) ≈ pv(r, long, [k / 3 for k in 1:40])
+
+        # Different lengths throw, whatever the collections. Before 3.0, all of these zipped the
+        # amounts with the times, dropping the extra entries.
+        for (a, s) in (
+                ((1.0, 2.0, 3.0), (1.0, 2.0)), ((1.0, 2.0), (1.0, 2.0, 3.0)),
+                ((v for v in [1.0, 2.0, 3.0]), (v for v in [1.0, 2.0])),
+                ((v for v in [1.0, 2.0]), (v for v in [1.0, 2.0, 3.0])),
+                ([1.0, 2.0], (1.0,)), ((1.0,), [1.0, 2.0]), ((1.0,), ()), ([1.0], (v for v in Float64[])),
+                ((Cashflow(1.0, 1.0), Cashflow(2.0, 2.0)), (1.0,)),
+            )
+            @test_throws DimensionMismatch pv(r, a, s)
+            @test_throws DimensionMismatch pv(0.05, a, s)
+        end
+
+        # A single time is a collection of one: it pays one amount, and more amounts throw.
+        @test pv(r, [10.0], 3.0) === pv(r, 10.0, 3.0)
+        @test pv(r, (10.0,), 3.0) === pv(r, 10.0, 3.0)
+        @test pv(r, [Cashflow(10.0, 2.0)], 3.0) === pv(r, 10.0, 2.0)
+        @test_throws DimensionMismatch pv(r, [10.0, 20.0], 3.0)
+        @test_throws DimensionMismatch pv(r, (10.0, 20.0), 3.0)
+        @test_throws DimensionMismatch pv(0.05, [10.0, 20.0], 3.0)
+
+        # No amounts are worth zero, whatever the times.
+        @test pv(r, (), (1.0, 2.0)) === 0.0
+        @test pv(r, (a for a in Float64[]), [1.0, 2.0]) === 0.0
+        @test pv(r, Float64[], 3.0) === 0.0
+        @test pv(r, Float64[], (s for s in [1.0, 2.0])) === 0.0
+
+        # Single-pass iterators are read once. Before 3.0, an emptiness check took the first amount.
+        @test pv(r, OnePass(x), t) === expected
+        @test pv(r, x, OnePass(t)) === expected
+        @test pv(r, OnePass(x), OnePass(t)) === expected
+        @test pv(0.05, OnePass(x), t) === pv(0.05, x, t)
+        lines(v) = (parse(Float64, l) for l in eachline(IOBuffer(join(v, "\n"))))
+        @test pv(r, lines(x), t) === expected
+        @test pv(r, x, lines(t)) === expected
+        @test_throws DimensionMismatch pv(r, OnePass([1.0, 2.0, 3.0]), [1.0, 2.0])
+        @test_throws DimensionMismatch pv(r, [1.0, 2.0], OnePass([1.0, 2.0, 3.0]))
+        @test_throws DimensionMismatch pv(r, OnePass([1.0, 2.0]), OnePass([1.0, 2.0, 3.0]))
+        @test pv(r, OnePass(Float64[]), [1.0]) === 0.0
+        @test pv(r, Float64[], OnePass([1.0])) === 0.0
     end
 
     @testset "amounts are paid at their times, Cashflows at their own" begin
