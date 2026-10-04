@@ -41,8 +41,12 @@ end
 # `nothing`). In either form, `_flow` reads the amount and time of flow `i` for Newton's kernel, and
 # `_flows` iterates them for everything else, so the solvers are shared. (Iterating rather than
 # indexing lets the compiler drop the scan for dual numbers when the element types rule them out;
-# indexed, a range of times kept a bounds-checked loop.)
-Base.@propagate_inbounds _flow(cashflows, times, i) = (cashflows[i], times[i])
+# indexed, a range of times kept a bounds-checked loop.) Both pair amounts and times by position, as
+# `present_value` does: `i` indexes the amounts, and the time at the same position is read from the
+# times' own first index, so offset vectors pair too, and the kernel's `@inbounds` reads stay in
+# bounds.
+Base.@propagate_inbounds _flow(cashflows, times, i) =
+    (cashflows[i], times[i - firstindex(cashflows) + firstindex(times)])
 Base.@propagate_inbounds _flow(cashflows, ::Nothing, i) = (amount(cashflows[i]), timepoint(cashflows[i]))
 _flows(cashflows, times) = zip(cashflows, times)
 _flows(cashflows, ::Nothing) = ((amount(cf), timepoint(cf)) for cf in cashflows)

@@ -63,6 +63,10 @@ pass any other argument to `Rate`. A model without its own method now gets a `Me
 `internal_rate_of_return(cashflows, timepoints)` (and `irr`) throws a `DimensionMismatch` unless
 both have the same length. 2.x ignored extra timepoints, and failed an `@assert` on too few.
 
+Cashflows and timepoints pair by position, as in `present_value`, so offset vectors pair too. 2.x
+indexed the timepoints with the cashflows' indices in its Newton solver, which read out of bounds
+when the two had different axes.
+
 ### Rate conversion
 
 The three-argument `convert(to, r, from)` hook (which ignored `from`) is replaced by the single
