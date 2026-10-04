@@ -1,3 +1,10 @@
+"""
+    FinanceCore.Frequency
+
+The compounding convention of a [`Rate`](@ref): [`Periodic`](@ref)`(n)`, compounded `n` times per
+period, or [`Continuous`](@ref)`()`. Calling a frequency on a number or a `Rate` gives a `Rate` in that
+convention: `Periodic(2)(0.05)` is `Periodic(0.05, 2)`, and `Continuous()(r)` converts `r`.
+"""
 abstract type Frequency end
 Base.Broadcast.broadcastable(x::T) where {T <: Frequency} = Ref(x)
 
@@ -368,16 +375,16 @@ over `to - from`. Other models, such as FinanceModels' yield curves, define thei
 
 ```julia-repl
 julia> discount(0.03, 10)
-0.7440939148967249
+0.7440939148967252
 
 julia> discount(Periodic(0.03, 2), 10)
-0.7424704182237725
+0.7424704182237711
 
 julia> discount(Continuous(0.03), 10)
 0.7408182206817179
 
 julia> discount(0.03, 5, 10)
-0.8626087843841639
+0.862608784384164
 ```
 """
 discount(rate, t) = discount(Rate(rate), t)
@@ -397,10 +404,10 @@ over `to - from`. Other models, such as FinanceModels' yield curves, define thei
 
 ```julia-repl
 julia> accumulation(0.03, 10)
-1.3439163793441222
+1.343916379344122
 
 julia> accumulation(Periodic(0.03, 2), 10)
-1.3468550065500535
+1.346855006550056
 
 julia> accumulation(Continuous(0.03), 10)
 1.3498588075760032
@@ -414,6 +421,14 @@ accumulation(rate::Rate, t) = exp(rate.continuous_value * t)
 accumulation(rate::Union{Real, Rate}, from, to) = accumulation(rate, to - from)
 
 Base.zero(rate::T, t) where {T <: Rate} = rate
+
+"""
+    forward(rate::Rate, from, to)
+    forward(rate::Rate, t)
+
+The forward rate over a period. A constant `Rate` is its own forward rate over every period, so both
+return `rate`. Other packages add methods for their models, such as FinanceModels' yield curves.
+"""
 forward(rate::T, to) where {T <: Rate} = rate
 forward(rate::T, from, to) where {T <: Rate} = rate
 

@@ -16,7 +16,21 @@ Supertype Hierarchy
 """
 const Timepoint{T} = Union{T, Dates.Date} where {T <: Real}
 
+"""
+    FinanceCore.AbstractContract
+
+The supertype of contracts, such as [`Cashflow`](@ref) and [`Composite`](@ref). FinanceModels adds
+bonds, swaps and options. A contract has a [`maturity`](@ref), and [`present_value`](@ref) values it.
+"""
 abstract type AbstractContract end
+
+"""
+    maturity(contract)
+
+The time of the last payment of `contract`: a `Cashflow`'s time, the later of a `Composite`'s two
+maturities, or the maturity of a `Quote`'s instrument.
+"""
+function maturity end
 
 """
     Quote(price,instrument)
