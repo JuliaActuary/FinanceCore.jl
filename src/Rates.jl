@@ -98,18 +98,19 @@ See also: [`Continuous`](@ref)
 """
 Periodic(x, frequency) = Periodic(frequency).(x)
 
-struct Rate{N, T <: Frequency}
+struct Rate{N <: Real, T <: Frequency}
     continuous_value::N  # Precomputed equivalent continuous rate for faster discount/accumulation
     compounding::T
 end
 
-# Outer constructor for Continuous rates - continuous_value equals value
-function Rate(value::N, compounding::Continuous) where {N}
+# Outer constructor for Continuous rates - continuous_value equals value. The numeric constructors
+# take a `Real`, so that they and the conversion `Rate(r::Rate, f)` dispatch disjointly.
+function Rate(value::N, compounding::Continuous) where {N <: Real}
     return Rate{N, Continuous}(value, compounding)
 end
 
 # Outer constructor for Periodic rates - precompute continuous equivalent
-function Rate(value, compounding::Periodic)
+function Rate(value::Real, compounding::Periodic)
     # continuous_value = n * log1p(r/n), which is the equivalent continuous rate.
     # log1p (and expm1 on the way back in `rate`) keeps the nominal↔continuous
     # round-trip accurate to ~1 ulp for small r/n, where log(1 + x) alone loses
@@ -136,8 +137,9 @@ function Base.show(io::IO, r::Rate{<:Any, Continuous})
 end
 
 """
-    Rate(rate[,frequency=1])
-    Rate(rate,frequency::Frequency)
+    Rate(rate::Real[, frequency = 1])
+    Rate(rate::Real, frequency::Frequency)
+    Rate(r::Rate[, frequency])
 
 Rate is a type that encapsulates an interest `rate` along with its compounding `frequency`.
 
@@ -146,6 +148,10 @@ Internally, all rates (including `Periodic` rates) are stored as their continuou
 Periodic rates can be constructed via `Rate(rate,frequency)` or `Rate(rate,Periodic(frequency))`. If not given a second argument, `Rate(rate)` is equivalent to `Rate(rate,Periodic(1))`.
 
 Continuous rates can be constructed via `Rate(rate, Inf)` or `Rate(rate,Continuous())`.
+
+Given a `Rate`, `Rate(r)` returns `r`, and `Rate(r, frequency)` converts `r` to `frequency` (a
+`Frequency`, or a number as above). The conversion keeps the force of interest and its numeric type
+exactly, and is the same as `convert(frequency, r)` and `frequency(r)`.
 
 # Examples
 
@@ -182,18 +188,27 @@ Continuous(0.01)
 
 julia> rate(Periodic(0.01,2))
 0.01
+
+julia> Rate(Continuous(0.05), Periodic(2))
+Periodic(0.05063024104885768, 2)
+
+julia> Rate(Periodic(0.05, 2), Inf)
+Continuous(0.049385225180743)
 ```
 """
 Rate(rate) = Rate(rate, Periodic(1))
 Rate(x, frequency::T) where {T <: Real} = isinf(frequency) ? Rate(x, Continuous()) : Rate(x, Periodic(frequency))
+Rate(r::Rate) = r
+Rate(r::Rate, frequency::Frequency) = convert(frequency, r)
 
 """
-    convert(cf::Frequency,r::Rate) 
+    convert(cf::Frequency,r::Rate)
 
 Returns a `Rate` with an equivalent discount but represented with a different compounding frequency.
 The stored continuous rate and its numeric type are preserved exactly. The nominal
 rate returned by `rate` can still round or overflow in the requested convention;
-discounting and accumulation use the preserved continuous rate.
+discounting and accumulation use the preserved continuous rate. `Rate(r, cf)` and `cf(r)` are the
+same conversion.
 
 # Examples
 

@@ -24,6 +24,50 @@ FinanceCore.accumulation(::LinearDiscount, t) = 1 / (1 - t / 100)
 
     end
 
+    @testset "constructing from a number or a Rate" begin
+        # the same rate: type, stored force and convention
+        identical(a, b) = typeof(a) === typeof(b) && isequal(a.continuous_value, b.continuous_value) &&
+            compounding(a) == compounding(b)
+        D = ForwardDiff.Dual(0.03, 1.0)
+        for x in (0.03, 0.03f0, big"0.03", D, 1)
+            c = Rate(x, Continuous())
+            @test c isa Rate{typeof(x), Continuous}
+            @test c.continuous_value === x
+            p = Rate(x, Periodic(2))
+            @test p isa Rate{typeof(2 * log1p(x / 2)), Periodic}
+            @test isequal(p.continuous_value, 2 * log1p(x / 2))
+            # the numeric frequency shorthand
+            @test identical(Rate(x, 2), p)
+            @test identical(Rate(x, 2.0), p)
+            @test identical(Rate(x, Inf), c)
+            @test identical(Rate(x), Rate(x, Periodic(1)))
+
+            # A Rate is returned as it is, or converted to another frequency, keeping its force and
+            # numeric type exactly. Before 3.0, Rate(r, Continuous()) nested the rate in a new one.
+            for r in (c, p)
+                @test Rate(r) === r
+                for f in (Continuous(), Periodic(1), Periodic(2), Periodic(12))
+                    converted = @inferred Rate(r, f)
+                    @test identical(converted, convert(f, r))
+                    @test identical(converted, f(r))
+                    @test converted.continuous_value === r.continuous_value
+                    @test compounding(converted) == f
+                end
+                @test identical(Rate(r, 12), convert(Periodic(12), r))
+                @test identical(Rate(r, Inf), convert(Continuous(), r))
+            end
+        end
+
+        # Rates hold real numbers. Before 3.0, Rate("0.03", Continuous()) built a rate holding a string.
+        @test_throws MethodError Rate("0.03", Continuous())
+        @test_throws MethodError Rate("0.03", Periodic(2))
+        @test_throws MethodError Rate(0.03 + 0.0im, Continuous())
+        @test_throws TypeError Rate{String, Continuous}("0.03", Continuous())
+
+        # The numeric constructors and the conversion dispatch disjointly.
+        @test isempty(Test.detect_ambiguities(FinanceCore))
+    end
+
     @testset "integer rate values" begin
         # Rate(1, Periodic(1)) — a 100% annual effective rate — previously threw
         # InexactError from converting the (irrational) continuous equivalent back

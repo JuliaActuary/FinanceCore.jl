@@ -59,6 +59,15 @@ method, which is wrong unless the rate is constant, and is removed: such a call 
 The three-argument `convert(to, r, from)` hook (which ignored `from`) is replaced by the single
 method `convert(to::Frequency, r::Rate)`. Converted rates are identical to before.
 
+`Rate(r::Rate, frequency)` is now the documented conversion, the same as `convert(frequency, r)`
+and `frequency(r)`, and `Rate(r::Rate)` returns `r`. The frequency can be a number, as for a numeric
+rate: `Rate(r, 2)` and `Rate(r, Inf)`. In 2.x, `Rate(r)` and `Rate(r, Periodic(n))` threw a
+`MethodError`, and `Rate(r, Continuous())` nested `r` in a new rate.
+
+A `Rate` now holds a real number: the type is `Rate{N <: Real, T <: Frequency}`, and the numeric
+constructors take a `Real` value. In 2.x, `Rate("0.05", Continuous())` built a rate holding a
+string; it now throws a `MethodError`.
+
 ### Migration
 
 | Before (2.x) | Now (3.0) |
@@ -71,3 +80,5 @@ method `convert(to::Frequency, r::Rate)`. Converted rates are identical to befor
 | `Cashflow(1.0, 1.0) + Cashflow(1.0, 1.0 + 1e-10)` | Throws an `ArgumentError`. Make the times equal, or combine with `FinanceCore.aggregate(cfs; key = ...)`, knowing that a key that moves times generally changes present value |
 | `discount(model, from, to)` or `accumulation(model, from, to)` for a model without its own interval method | Throws a `MethodError`. Define `FinanceCore.discount(m::MyModel, from, to)` (for example `discount(m, to) / discount(m, from)`) and `accumulation` likewise |
 | `convert(to, r, from)` | `convert(to, r)` |
+| `Rate(r, Continuous())` with a `Rate` `r` (nested `r` in a new rate) | Converts `r`, like `convert(Continuous(), r)` |
+| `Rate(x, f)` with a value `x` that is not a `Real` | Throws a `MethodError` |
