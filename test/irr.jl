@@ -283,9 +283,26 @@ end
     # Multiple roots: the fallback chooses the one nearest zero in force space (0.1 over 0.2).
     @test FinanceCore._irr_robust(zip([-100.0, 230.0, -132.0], [1000.0, 1001.0, 1002.0])) ≈ log(1.1)
 
-    # Extra timepoints have always been ignored; they must not shift the fallback's origin.
-    @test irr([-100.0, 110.0], [1000.0, 1001.0, -1.0e6]) ≈ Periodic(0.1, 1)
-    @test_throws AssertionError irr([-100.0, 110.0], [0.0])
+    # Cashflows and timepoints have the same length. Before 3.0, extra timepoints were ignored, and
+    # too few failed an assertion.
+    @test_throws DimensionMismatch irr([-100.0, 110.0], [1000.0, 1001.0, -1.0e6])
+    @test_throws DimensionMismatch irr([-100.0, 110.0], 0:2)
+    @test_throws DimensionMismatch irr([-100.0, 110.0], [0.0])
+    @test_throws DimensionMismatch irr(Float64[], [0.0])
+
+    # Cashflows and timepoints pair by position, as in present_value, so offset vectors pair too.
+    # Newton's kernel used to index the times with the cashflows' indices, out of bounds.
+    for (a, t) in (([-100.0, 110.0], [0.0, 1.0]), ([-70000, 12000, 15000, 18000, 21000, 26000], 0:5))
+        expected = irr(a, t)
+        n = length(a)
+        @test irr(OffsetArray(a, 40:(39 + n)), t) == expected
+        @test irr(a, OffsetArray(collect(t), 0:(n - 1))) == expected
+        @test irr(OffsetArray(a, 40:(39 + n)), OffsetArray(collect(t), -3:(n - 4))) == expected
+        @test FinanceCore._irr_newton(OffsetArray(a, 40:(39 + n)), OffsetArray(collect(t), 0:(n - 1)), 0) ==
+            FinanceCore._irr_newton(a, t, 0)
+        @test ForwardDiff.gradient(x -> rate(irr(OffsetArray(x, 0:(n - 1)), t)), float(a)) ≈
+            ForwardDiff.gradient(x -> rate(irr(x, t)), float(a))
+    end
 
     # AD must agree through both public input representations.
     amounts = [-100.0, 110.0]

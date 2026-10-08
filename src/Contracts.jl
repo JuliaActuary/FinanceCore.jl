@@ -16,7 +16,21 @@ Supertype Hierarchy
 """
 const Timepoint{T} = Union{T, Dates.Date} where {T <: Real}
 
+"""
+    FinanceCore.AbstractContract
+
+The supertype of contracts, such as [`Cashflow`](@ref) and [`Composite`](@ref). FinanceModels adds
+bonds, swaps and options. A contract has a [`maturity`](@ref), and [`present_value`](@ref) values it.
+"""
 abstract type AbstractContract end
+
+"""
+    maturity(contract)
+
+The time of the last payment of `contract`: a `Cashflow`'s time, the later of a `Composite`'s two
+maturities, or the maturity of a `Quote`'s instrument.
+"""
+function maturity end
 
 """
     Quote(price,instrument)
@@ -43,7 +57,7 @@ A `Cashflow{A,B}` is a contract that pays an `amount` at `time`.
 Cashflows can be:
 
 - negated with the unary `-` operator. 
-- added/subtracted together but note that the `time` must be `isapprox` equal (default `isapprox` tolerance, i.e. relative to the magnitude of the times).
+- added or subtracted when their times are exactly equal (`==`). To combine cashflows at different times, use [`FinanceCore.aggregate`](@ref).
 - multiplied/divided by a scalar.
 
 Supertype Hierarchy
@@ -107,8 +121,9 @@ function Base.isapprox(a::C, b::D; kwargs...) where {C <: Cashflow, D <: Cashflo
     return amt && __time_isapprox(timepoint(a), timepoint(b); kwargs...)
 end
 
+# Times must be exactly equal: a tolerance would make addition non-associative.
 function Base.:+(c1::C, c2::D) where {C <: Cashflow, D <: Cashflow}
-    return if __time_isapprox(timepoint(c1), timepoint(c2))
+    return if timepoint(c1) == timepoint(c2)
         Cashflow(amount(c1) + amount(c2), timepoint(c1))
     else
         throw(ArgumentError("Cashflow timepoints must be the same. Got $(timepoint(c1)) and $(timepoint(c2))."))
@@ -116,7 +131,7 @@ function Base.:+(c1::C, c2::D) where {C <: Cashflow, D <: Cashflow}
 end
 
 function Base.:-(c1::C, c2::D) where {C <: Cashflow, D <: Cashflow}
-    return if __time_isapprox(timepoint(c1), timepoint(c2))
+    return if timepoint(c1) == timepoint(c2)
         Cashflow(amount(c1) - amount(c2), timepoint(c1))
     else
         throw(ArgumentError("Cashflow timepoints must be the same. Got $(timepoint(c1)) and $(timepoint(c2))."))
@@ -131,6 +146,42 @@ function Base.:*(c1::D, c2::C) where {C <: Cashflow, D <: Real}
 end
 function Base.:/(c1::C, c2::D) where {C <: Cashflow, D <: Real}
     return Cashflow(amount(c1) / c2, timepoint(c1))
+end
+
+"""
+    FinanceCore.aggregate(cashflows; key = identity)
+
+Group `cashflows` by `key(time)`, comparing keys with `==`. Return one `Cashflow` per key, in
+ascending key order. Its amount is the group's total and its time is the key.
+
+For any `key`, the total amount is preserved (≈, as the sum is reordered). Present value is preserved
+(≈) when `key` leaves times unchanged, as the default `identity` does. A `key` that moves times, such
+as `round`, generally changes present value.
+
+# Examples
+
+```julia-repl
+julia> FinanceCore.aggregate([Cashflow(1.0, 2.0), Cashflow(2.0, 1.0), Cashflow(3.0, 2.0)])
+2-element Vector{Cashflow{Float64, Float64}}:
+ Cashflow{Float64, Float64}(2.0, 1.0)
+ Cashflow{Float64, Float64}(4.0, 2.0)
+
+julia> FinanceCore.aggregate([Cashflow(1.0, 0.9), Cashflow(2.0, 1.2)]; key = round)
+1-element Vector{Cashflow{Float64, Float64}}:
+ Cashflow{Float64, Float64}(3.0, 1.0)
+```
+"""
+function aggregate(cashflows; key = identity)
+    keyed = sort!([Cashflow(amount(cf), key(timepoint(cf))) for cf in cashflows]; by = timepoint)
+    merged = empty(keyed)
+    for cf in keyed
+        if !isempty(merged) && timepoint(merged[end]) == timepoint(cf)
+            merged[end] += cf
+        else
+            push!(merged, cf)
+        end
+    end
+    return merged
 end
 
 """

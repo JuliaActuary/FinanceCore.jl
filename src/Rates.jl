@@ -1,3 +1,10 @@
+"""
+    FinanceCore.Frequency
+
+The compounding convention of a [`Rate`](@ref): [`Periodic`](@ref)`(n)`, compounded `n` times per
+period, or [`Continuous`](@ref)`()`. Calling a frequency on a number or a `Rate` gives a `Rate` in that
+convention: `Periodic(2)(0.05)` is `Periodic(0.05, 2)`, and `Continuous()(r)` converts `r`.
+"""
 abstract type Frequency end
 Base.Broadcast.broadcastable(x::T) where {T <: Frequency} = Ref(x)
 
@@ -98,18 +105,19 @@ See also: [`Continuous`](@ref)
 """
 Periodic(x, frequency) = Periodic(frequency).(x)
 
-struct Rate{N, T <: Frequency}
+struct Rate{N <: Real, T <: Frequency}
     continuous_value::N  # Precomputed equivalent continuous rate for faster discount/accumulation
     compounding::T
 end
 
-# Outer constructor for Continuous rates - continuous_value equals value
-function Rate(value::N, compounding::Continuous) where {N}
+# Outer constructor for Continuous rates - continuous_value equals value. The numeric constructors
+# take a `Real`, so that they and the conversion `Rate(r::Rate, f)` dispatch disjointly.
+function Rate(value::N, compounding::Continuous) where {N <: Real}
     return Rate{N, Continuous}(value, compounding)
 end
 
 # Outer constructor for Periodic rates - precompute continuous equivalent
-function Rate(value, compounding::Periodic)
+function Rate(value::Real, compounding::Periodic)
     # continuous_value = n * log1p(r/n), which is the equivalent continuous rate.
     # log1p (and expm1 on the way back in `rate`) keeps the nominal↔continuous
     # round-trip accurate to ~1 ulp for small r/n, where log(1 + x) alone loses
@@ -126,18 +134,24 @@ end
 Base.Broadcast.broadcastable(ic::T) where {T <: Rate} = Ref(ic)
 
 # Pretty printing: show the user-facing rate value, not the internal continuous_value.
-# Output is a valid constructor expression, e.g. Periodic(0.06, 2) or Continuous(0.03).
+# Output is a valid constructor expression, e.g. Periodic(0.06, 2) or Continuous(0.03). The value is
+# printed with `show`, so its type survives where the number's `show` keeps it: Continuous(0.03f0).
 function Base.show(io::IO, r::Rate{<:Any, Periodic})
-    return print(io, "Periodic(", rate(r), ", ", r.compounding.frequency, ")")
+    print(io, "Periodic(")
+    show(io, rate(r))
+    return print(io, ", ", r.compounding.frequency, ")")
 end
 
 function Base.show(io::IO, r::Rate{<:Any, Continuous})
-    return print(io, "Continuous(", rate(r), ")")
+    print(io, "Continuous(")
+    show(io, rate(r))
+    return print(io, ")")
 end
 
 """
-    Rate(rate[,frequency=1])
-    Rate(rate,frequency::Frequency)
+    Rate(rate::Real[, frequency = 1])
+    Rate(rate::Real, frequency::Frequency)
+    Rate(r::Rate[, frequency])
 
 Rate is a type that encapsulates an interest `rate` along with its compounding `frequency`.
 
@@ -146,6 +160,10 @@ Internally, all rates (including `Periodic` rates) are stored as their continuou
 Periodic rates can be constructed via `Rate(rate,frequency)` or `Rate(rate,Periodic(frequency))`. If not given a second argument, `Rate(rate)` is equivalent to `Rate(rate,Periodic(1))`.
 
 Continuous rates can be constructed via `Rate(rate, Inf)` or `Rate(rate,Continuous())`.
+
+Given a `Rate`, `Rate(r)` returns `r`, and `Rate(r, frequency)` converts `r` to `frequency` (a
+`Frequency`, or a number as above). The conversion keeps the force of interest and its numeric type
+exactly, and is the same as `convert(frequency, r)` and `frequency(r)`.
 
 # Examples
 
@@ -182,18 +200,27 @@ Continuous(0.01)
 
 julia> rate(Periodic(0.01,2))
 0.01
+
+julia> Rate(Continuous(0.05), Periodic(2))
+Periodic(0.05063024104885768, 2)
+
+julia> Rate(Periodic(0.05, 2), Inf)
+Continuous(0.049385225180743)
 ```
 """
 Rate(rate) = Rate(rate, Periodic(1))
 Rate(x, frequency::T) where {T <: Real} = isinf(frequency) ? Rate(x, Continuous()) : Rate(x, Periodic(frequency))
+Rate(r::Rate) = r
+Rate(r::Rate, frequency::Frequency) = convert(frequency, r)
 
 """
-    convert(cf::Frequency,r::Rate) 
+    convert(cf::Frequency,r::Rate)
 
 Returns a `Rate` with an equivalent discount but represented with a different compounding frequency.
 The stored continuous rate and its numeric type are preserved exactly. The nominal
 rate returned by `rate` can still round or overflow in the requested convention;
-discounting and accumulation use the preserved continuous rate.
+discounting and accumulation use the preserved continuous rate. `Rate(r, cf)` and `cf(r)` are the
+same conversion.
 
 # Examples
 
@@ -208,19 +235,14 @@ julia> convert(Continuous(), r)
 Continuous(0.009995835646702353)
 ```
 """
-function Base.convert(cf::T, r::Rate{<:Any, <:Frequency}) where {T <: Frequency}
-    return convert(cf, r, r.compounding)
+function Base.convert(to::T, r::Rate{N}) where {N, T <: Frequency}
+    # Every convention stores the same force of interest. Only the quoting metadata
+    # changes; a nominal-rate round trip would lose precision or saturate at -frequency.
+    return Rate{N, T}(r.continuous_value, to)
 end
 
 function Base.convert(cf::T, r::R) where {R <: Real} where {T <: Frequency}
     return Rate(r, cf)
-end
-
-# Both conventions store the same force of interest. Only the quoting metadata
-# changes; a nominal-rate round trip would lose precision or saturate at -frequency.
-# Keep the three-argument dispatch so other Frequency types can define conversions.
-function Base.convert(to::T, r::Rate{N}, from::Union{Continuous, Periodic}) where {N, T <: Union{Continuous, Periodic}}
-    return Rate{N, T}(r.continuous_value, to)
 end
 
 function Continuous(r::Rate{<:Any, <:Periodic})
@@ -344,42 +366,50 @@ Base.hash(r::Rate, h::UInt) = hash(r.continuous_value, hash(:FinanceCoreRate, h)
     discount(rate, t)
     discount(rate, from, to)
 
-Discount `rate` for a time `t` or for an interval `(from, to)`. If `rate` is not a `Rate`, it will be assumed to be a `Periodic` rate compounded once per period, i.e. `Periodic(rate,1)`. 
+Discount `rate` for a time `t` or for an interval `(from, to)`. A number `rate` is taken as a rate
+compounded once per period, `Periodic(rate, 1)`.
+
+FinanceCore defines the interval form only for a constant rate (a `Rate` or a number); it discounts
+over `to - from`. Other models, such as FinanceModels' yield curves, define their own interval method.
 
 # Examples
 
 ```julia-repl
 julia> discount(0.03, 10)
-0.7440939148967249
+0.7440939148967252
 
 julia> discount(Periodic(0.03, 2), 10)
-0.7424704182237725
+0.7424704182237711
 
 julia> discount(Continuous(0.03), 10)
 0.7408182206817179
 
 julia> discount(0.03, 5, 10)
-0.8626087843841639
+0.862608784384164
 ```
 """
-discount(rate, t) = discount(Rate(rate), t)
+discount(rate::Real, t) = discount(Rate(rate), t)
 discount(rate::Rate, t) = exp(-rate.continuous_value * t)
-discount(rate, from, to) = discount(rate, to - from)
+discount(rate::Union{Real, Rate}, from, to) = discount(rate, to - from)
 
 """
     accumulation(rate, t)
     accumulation(rate, from, to)
 
-Accumulate `rate` for a time `t` or for an interval `(from, to)`. If `rate` is not a `Rate`, it will be assumed to be a `Periodic` rate compounded once per period, i.e. `Periodic(rate,1)`. 
+Accumulate `rate` for a time `t` or for an interval `(from, to)`. A number `rate` is taken as a rate
+compounded once per period, `Periodic(rate, 1)`.
+
+FinanceCore defines the interval form only for a constant rate (a `Rate` or a number); it accumulates
+over `to - from`. Other models, such as FinanceModels' yield curves, define their own interval method.
 
 # Examples
 
 ```julia-repl
 julia> accumulation(0.03, 10)
-1.3439163793441222
+1.343916379344122
 
 julia> accumulation(Periodic(0.03, 2), 10)
-1.3468550065500535
+1.346855006550056
 
 julia> accumulation(Continuous(0.03), 10)
 1.3498588075760032
@@ -388,11 +418,19 @@ julia> accumulation(0.03, 5, 10)
 1.1592740743
 ```
 """
-accumulation(rate, t) = accumulation(Rate(rate), t)
+accumulation(rate::Real, t) = accumulation(Rate(rate), t)
 accumulation(rate::Rate, t) = exp(rate.continuous_value * t)
-accumulation(rate, from, to) = accumulation(rate, to - from)
+accumulation(rate::Union{Real, Rate}, from, to) = accumulation(rate, to - from)
 
 Base.zero(rate::T, t) where {T <: Rate} = rate
+
+"""
+    forward(rate::Rate, from, to)
+    forward(rate::Rate, t)
+
+The forward rate over a period. A constant `Rate` is its own forward rate over every period, so both
+return `rate`. Other packages add methods for their models, such as FinanceModels' yield curves.
+"""
 forward(rate::T, to) where {T <: Rate} = rate
 forward(rate::T, from, to) where {T <: Rate} = rate
 

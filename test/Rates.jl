@@ -1,3 +1,8 @@
+# A discount model that is not a constant rate: it discounts from time zero, but has no interval method.
+struct LinearDiscount end
+FinanceCore.discount(::LinearDiscount, t) = 1 - t / 100
+FinanceCore.accumulation(::LinearDiscount, t) = 1 / (1 - t / 100)
+
 @testset "Rates" begin
     @testset "rate types" begin
         rs = Rate.([0.1, 0.02], Continuous())
@@ -17,6 +22,68 @@
         @test Rate(0.02, 2) == Rate(0.02, Periodic(2))
         @test Rate(0.02, Inf) == Rate(0.02, Continuous())
 
+    end
+
+    @testset "constructing from a number or a Rate" begin
+        # the same rate: type, stored force and convention
+        identical(a, b) = typeof(a) === typeof(b) && isequal(a.continuous_value, b.continuous_value) &&
+            compounding(a) == compounding(b)
+        D = ForwardDiff.Dual(0.03, 1.0)
+        for x in (0.03, 0.03f0, big"0.03", D, 1)
+            c = Rate(x, Continuous())
+            @test c isa Rate{typeof(x), Continuous}
+            @test c.continuous_value === x
+            p = Rate(x, Periodic(2))
+            @test p isa Rate{typeof(2 * log1p(x / 2)), Periodic}
+            @test isequal(p.continuous_value, 2 * log1p(x / 2))
+            # the numeric frequency shorthand
+            @test identical(Rate(x, 2), p)
+            @test identical(Rate(x, 2.0), p)
+            @test identical(Rate(x, Inf), c)
+            @test identical(Rate(x), Rate(x, Periodic(1)))
+
+            # A Rate is returned as it is, or converted to another frequency, keeping its force and
+            # numeric type exactly. Before 3.0, Rate(r, Continuous()) nested the rate in a new one.
+            for r in (c, p)
+                @test Rate(r) === r
+                for f in (Continuous(), Periodic(1), Periodic(2), Periodic(12))
+                    converted = @inferred Rate(r, f)
+                    @test identical(converted, convert(f, r))
+                    @test identical(converted, f(r))
+                    @test converted.continuous_value === r.continuous_value
+                    @test compounding(converted) == f
+                end
+                @test identical(Rate(r, 12), convert(Periodic(12), r))
+                @test identical(Rate(r, Inf), convert(Continuous(), r))
+            end
+        end
+
+        # Rates hold real numbers. Before 3.0, Rate("0.03", Continuous()) built a rate holding a string.
+        @test_throws MethodError Rate("0.03", Continuous())
+        @test_throws MethodError Rate("0.03", Periodic(2))
+        @test_throws MethodError Rate(0.03 + 0.0im, Continuous())
+        @test_throws TypeError Rate{String, Continuous}("0.03", Continuous())
+
+        # The numeric constructors and the conversion dispatch disjointly.
+        @test isempty(Test.detect_ambiguities(FinanceCore))
+    end
+
+    @testset "printing keeps the number type" begin
+        @test repr(Continuous(0.03)) == "Continuous(0.03)"
+        @test repr(Periodic(0.05, 2)) == "Periodic(0.05, 2)"
+        # Before 3.0, these printed as Float64 rates.
+        @test repr(Continuous(0.03f0)) == "Continuous(0.03f0)"
+        @test repr(Periodic(0.05f0, 2)) == "Periodic(0.05f0, 2)"
+        @test repr(Continuous(Float16(0.03))) == "Continuous(Float16(0.03))"
+        # The output is a constructor expression for a rate of the same type.
+        for r in (
+                Continuous(0.03), Periodic(0.05, 2), Continuous(0.03f0), Periodic(0.05f0, 12),
+                Continuous(Float16(0.03)), Periodic(Float16(0.05), 2), Continuous(1), Continuous(1 // 2),
+            )
+            printed = Core.eval(@__MODULE__, Meta.parse(repr(r)))
+            @test typeof(printed) === typeof(r)
+            @test printed ≈ r
+        end
     end
 
     @testset "integer rate values" begin
@@ -70,14 +137,18 @@
 
     @testset "conversion preserves the force of interest" begin
         originals = (
-            Continuous(-40.0), Continuous(1000.0), Continuous(-0.0), Continuous(NaN),
-            Periodic(-0.9, 1), Periodic(0.05, 2),
-            Continuous(0.03f0), Periodic(0.02f0, 12), Continuous(big"0.03"),
+            Continuous(-40.0), Continuous(1000.0), Continuous(-0.0), Continuous(NaN), Continuous(Inf),
+            Periodic(-0.9, 1), Periodic(0.05, 2), Periodic(0.07, 365), Rate(1, Periodic(1)),
+            Continuous(0.03f0), Periodic(0.02f0, 12), Continuous(big"0.03"), Periodic(big"0.03", 4),
+            Continuous(ForwardDiff.Dual(0.03, 1.0)), Periodic(ForwardDiff.Dual(0.03, 1.0), 2),
         )
-        for original in originals, convention in (Continuous(), Periodic(1), Periodic(12))
+        conventions = (Continuous(), Periodic(1), Periodic(2), Periodic(12), Periodic(365))
+        for original in originals, convention in conventions
             converted = @inferred convert(convention, original)
             @test compounding(converted) == convention
             @test typeof(converted.continuous_value) === typeof(original.continuous_value)
+            @test converted.continuous_value === original.continuous_value
+            @test convention(original) === converted
             @test isequal(converted, original)
             @test hash(converted) == hash(original)
             @test isequal(discount(converted, 0.001), discount(original, 0.001))
@@ -352,6 +423,33 @@
         @test discount(rate, from, to) ≈ discount(rate, to - from)
         @test accumulation(rate, from, to) ≈ accumulation(rate, to - from)
 
+        # a constant rate, given as a Rate or a number, discounts over `to - from`
+        for r in (0.15, 3, 0.15f0, big"0.15", Periodic(0.15, 2), Continuous(0.15), ForwardDiff.Dual(0.15, 1.0))
+            @test discount(r, from, to) == discount(r, to - from)
+            @test accumulation(r, from, to) == accumulation(r, to - from)
+            @test discount(r, 2.0, 1.0) == accumulation(r, 1.0, 2.0)
+        end
+        # any other model (a yield curve, say) defines its own interval, rather than falling back to
+        # `to - from`, which is wrong unless the rate is constant
+        @test discount(LinearDiscount(), 1.0) == 0.99
+        @test_throws MethodError discount(LinearDiscount(), 1.0, 2.0)
+        @test_throws MethodError accumulation(LinearDiscount(), 1.0, 2.0)
+        @test_throws MethodError discount(Continuous(), from, to)
+
+        # Only a number is taken as a rate, so anything else without its own method throws from
+        # `discount` or `accumulation` itself. Before 3.0, it went to `Rate` and threw inside it.
+        for f in (discount, accumulation), x in (Continuous(), "0.15", :rate)
+            err = try
+                f(x, 1.0)
+            catch e
+                e
+            end
+            @test err isa MethodError && err.f === f
+        end
+        for r in (0.15, 3, 0.15f0, big"0.15", 3 // 20, ForwardDiff.Dual(0.15, 1.0))
+            @test discount(r, 2.0) == discount(Rate(r), 2.0)
+            @test accumulation(r, 2.0) == accumulation(Rate(r), 2.0)
+        end
     end
 
     @testset "Compounding Interface" begin
