@@ -1,5 +1,17 @@
 # FinanceCore.jl release notes
 
+## v3.0.1
+
+### Faster first `irr`
+
+The first `irr` call in a session took 0.77 s on Julia 1.13, nearly all of it compiling the robust
+fallback solver (`Roots.find_zeros` and the sorting and filtering around it), although Newton's
+method converges for typical cashflows and the fallback never runs. The fallback is now called
+through an inference barrier, so it compiles only when Newton fails, and FinanceCore precompiles
+`irr`, `present_value`, `discount` and `accumulation` over common rate and cashflow types. The
+first `irr` call takes 0.005 s and the first `present_value` 0.008 s (was 0.035 s). Loading
+FinanceCore takes the same time, warm calls are unchanged, and results are identical.
+
 ## v3.0.0
 
 ### Valuation composes

@@ -73,7 +73,9 @@ function _irr_force(cashflows, times)
     nonzero = _nonzero(flows)
     isempty(nonzero) && return nothing
     r = _irr_newton(cashflows, times, last(first(nonzero)))
-    isnothing(r) && (r = _irr_robust(flows))
+    # The fallback is reached only when Newton fails. A dynamic call keeps Roots and sorting out of
+    # every Newton-path compilation; its roots come from a Float64 bracket.
+    isnothing(r) && (r = Base.inferencebarrier(_irr_robust)(flows)::Union{Nothing, Float64})
     return r
 end
 
