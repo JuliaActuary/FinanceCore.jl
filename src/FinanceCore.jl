@@ -15,4 +15,6 @@ export irr, internal_rate_of_return
 include("pv.jl")
 export pv, present_value
 
+include("precompile.jl")
+
 end
