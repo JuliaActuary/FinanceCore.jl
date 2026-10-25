@@ -1,7 +1,7 @@
 # FinanceCore
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://JuliaActuary.github.io/FinanceCore.jl/stable)
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://JuliaActuary.github.io/FinanceCore.jl/dev)
+[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://docs.juliaactuary.org/FinanceCore/stable/)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://docs.juliaactuary.org/FinanceCore/dev/)
 [![Build Status](https://github.com/JuliaActuary/FinanceCore.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/JuliaActuary/FinanceCore.jl/actions/workflows/CI.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/JuliaActuary/FinanceCore.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/JuliaActuary/FinanceCore.jl)
 [![Aqua QA](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
