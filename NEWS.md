@@ -1,5 +1,20 @@
 # FinanceCore.jl release notes
 
+## v3.0.2
+
+### `irr` returns the force it solved
+
+`irr` solves for a force of interest and quotes it as an annual effective rate. It built that rate
+from the nominal value `expm1(force)`, which recomputed the stored force as `log1p(expm1(force))`.
+For a force below about -37 the nominal rate rounds to -1, so the stored force became `-Inf`:
+`irr([-100.0, 60.0], [0.0, 0.01])` solves at `log(0.6) / 0.01 ≈ -51.08`, but discounting with the
+returned rate gave `Inf`, and the present value of the two payments at their own IRR was `NaN`.
+
+The returned rate now carries the solved force exactly, as `convert(Periodic(1), Continuous(force))`
+does, so it reprices the cashflows to zero. `rate(irr(...))` is unchanged (it is still
+`expm1(force)`). Discount factors from a returned rate can differ in the last bits, since the
+stored force no longer passes through the nominal-rate round trip.
+
 ## v3.0.1
 
 ### Faster first `irr`
