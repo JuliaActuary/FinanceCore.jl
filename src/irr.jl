@@ -83,9 +83,11 @@ end
 # enter the fallback's terms, where a zero far from the origin would evaluate as 0 * Inf.
 _nonzero(flows) = Iterators.filter(p -> !iszero(first(p)), flows)
 
-# Convert a force of interest from the solvers to an annual effective rate.
-# `expm1` preserves nominal rates too small for `exp(r) - 1` to represent.
-_periodic_from_force(r) = Periodic(expm1(r), 1)
+# Quote a force of interest from the solvers as an annual effective rate. A `Rate` stores its force,
+# so the returned rate carries the solved force exactly and reprices the cashflows as the solver
+# did. Building it from the nominal rate `expm1(r)` instead would recompute the force as
+# `log1p(expm1(r))`, which is `-Inf` once the nominal rate rounds to -1 (a force below about -37).
+_periodic_from_force(r) = convert(Periodic(1), Continuous(r))
 
 function _is_irr_root(r, terms)
     residual = zero(r)

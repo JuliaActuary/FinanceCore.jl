@@ -313,6 +313,38 @@ end
     @test wrapped ≈ numeric
 end
 
+@testset "irr returns the solved force" begin
+    # 100 lent for 60 back 0.01 years later solves at the finite force log(0.6) / 0.01 ≈ -51.08.
+    # Its annual effective rate rounds to -1, so a rate rebuilt from that nominal value stored a
+    # force of -Inf and repriced the cashflows to NaN. The returned rate carries the solver's force.
+    amounts, times = [-100.0, 60.0], [0.0, 0.01]
+    force = log(0.6) / 0.01
+    for r in (irr(amounts, times), irr(Cashflow.(amounts, times)))
+        @test r isa FinanceCore.Rate{Float64, Periodic}
+        @test FinanceCore.compounding(r) == Periodic(1)
+        @test rate(Continuous(r)) ≈ force rtol = 1.0e-12
+        @test rate(r) == -1.0 # the nominal rate saturates; the force does not
+        @test discount(r, 0.01) ≈ 1 / 0.6 rtol = 1.0e-12
+    end
+    @test present_value(irr(amounts, times), amounts, times) ≈ 0 atol = 1.0e-10
+    cfs = Cashflow.(amounts, times)
+    @test present_value(irr(cfs), cfs) ≈ 0 atol = 1.0e-10
+
+    # The force is stored as solved, in its own type, rather than through a nominal-rate round trip
+    # (`log1p(expm1(r))` differs from `r` in the last bits well before it saturates).
+    for r in (-51.08256237659907, -5.0, -0.3, 1.0e-16, 0.05, 3.0, -5.0f0, big"-60.0")
+        periodic = FinanceCore._periodic_from_force(r)
+        @test periodic.continuous_value === r
+        @test periodic.compounding == Periodic(1)
+    end
+
+    # Derivatives follow the force too: r = log(-a₂ / a₁) / Δt.
+    gradient = ForwardDiff.gradient(a -> rate(Continuous(irr(a, times))), amounts)
+    @test gradient ≈ [-1 / (amounts[1] * 0.01), 1 / (amounts[2] * 0.01)]
+    hessian = ForwardDiff.hessian(a -> rate(Continuous(irr(a, times))), amounts)
+    @test hessian ≈ [1 / (amounts[1]^2 * 0.01) 0; 0 -1 / (amounts[2]^2 * 0.01)]
+end
+
 @testset "irr at extreme notionals" begin
     # Newton works on unscaled amounts. At 1e307 its derivative sum overflows, and at 1e-303 over
     # 23,000 years its sums underflow into the subnormals; either way it used to accept a wrong
